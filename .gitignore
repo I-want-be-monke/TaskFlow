@@ -1,0 +1,42 @@
+# .NET build output
+**/bin/
+**/obj/
+artifacts/
+TestResults/
+
+# IDE / editors
+.vs/
+.vscode/
+.idea/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+
+# Local configuration and secrets
+.env
+.env.*
+!.env.compose.example
+!.env.example
+appsettings.*.Local.json
+secrets.json
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs / local runtime state
+*.log
+*.db
+*.db-shm
+*.db-wal
+
+# Coverage
+coverage/
+*.coverage
+*.coveragexml
+
+# Local container runtime material
+.env.compose.local
+.local/
+
