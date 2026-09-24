@@ -1,0 +1,128 @@
+services:
+  postgres:
+    image: postgres:18.6-alpine3.24
+    environment:
+      POSTGRES_DB: taskflow
+      POSTGRES_USER: taskflow_bootstrap
+      POSTGRES_PASSWORD: ${POSTGRES_SUPERUSER_PASSWORD:?POSTGRES_SUPERUSER_PASSWORD is required}
+      TASKFLOW_APP_DB_PASSWORD: ${TASKFLOW_APP_DB_PASSWORD:?TASKFLOW_APP_DB_PASSWORD is required}
+      TASKFLOW_MIGRATOR_DB_PASSWORD: ${TASKFLOW_MIGRATOR_DB_PASSWORD:?TASKFLOW_MIGRATOR_DB_PASSWORD is required}
+    volumes:
+      - taskflow-postgres:/var/lib/postgresql
+      - ./deploy/postgres/docker-entrypoint-initdb.d/10-create-roles.sh:/docker-entrypoint-initdb.d/10-create-roles.sh:ro
+      - ./deploy/postgres/least-privilege.sql:/docker-entrypoint-initdb.d/20-least-privilege.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready --username taskflow_bootstrap --dbname taskflow"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+      start_period: 5s
+    restart: unless-stopped
+    networks:
+      - backend
+
+  migrator:
+    image: taskflow-migrator:${TASKFLOW_IMAGE_TAG:?TASKFLOW_IMAGE_TAG is required}
+    build:
+      context: .
+      dockerfile: src/TaskFlow.DbMigrator/Dockerfile
+    environment:
+      DOTNET_ENVIRONMENT: Production
+      ConnectionStrings__Postgres: Host=postgres;Port=5432;Database=taskflow;Username=taskflow_migrator;Password=${TASKFLOW_MIGRATOR_DB_PASSWORD:?TASKFLOW_MIGRATOR_DB_PASSWORD is required};SSL Mode=Disable
+      Migrator__LockTimeoutSeconds: 30
+      Observability__ServiceVersion: ${TASKFLOW_IMAGE_TAG:?TASKFLOW_IMAGE_TAG is required}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    read_only: true
+    tmpfs:
+      - /tmp:size=64m,mode=1777
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    restart: "no"
+    networks:
+      - backend
+
+  api:
+    image: taskflow-api:${TASKFLOW_IMAGE_TAG:?TASKFLOW_IMAGE_TAG is required}
+    build:
+      context: .
+      dockerfile: src/TaskFlow.Api/Dockerfile
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      ASPNETCORE_URLS: http://+:8080
+      ConnectionStrings__Postgres: Host=postgres;Port=5432;Database=taskflow;Username=taskflow_app;Password=${TASKFLOW_APP_DB_PASSWORD:?TASKFLOW_APP_DB_PASSWORD is required};SSL Mode=Disable
+      Auth__AllowRegistration: "true"
+      Security__RateLimit__ApiPermitLimit: 100
+      Security__RateLimit__LoginPermitLimit: 10
+      Security__RateLimit__WindowSeconds: 60
+      Security__RequestTimeoutSeconds: 30
+      Security__MaxRequestBodyBytes: 1048576
+      Proxy__ForwardLimit: 1
+      Proxy__KnownProxies__0: ${TASKFLOW_PROXY_IP:?TASKFLOW_PROXY_IP is required}
+      Observability__ServiceVersion: ${TASKFLOW_IMAGE_TAG:?TASKFLOW_IMAGE_TAG is required}
+      Observability__SlowDbThresholdMs: 500
+      Logging__LogLevel__Default: Information
+    depends_on:
+      migrator:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "--silent", "--show-error", "http://127.0.0.1:8080/health/live"]
+      interval: 3s
+      timeout: 3s
+      retries: 30
+      start_period: 5s
+    read_only: true
+    tmpfs:
+      - /tmp:size=64m,mode=1777
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    stop_grace_period: 20s
+    restart: unless-stopped
+    networks:
+      - backend
+
+  frontend:
+    image: taskflow-frontend:${TASKFLOW_IMAGE_TAG:?TASKFLOW_IMAGE_TAG is required}
+    build:
+      context: .
+      dockerfile: src/TaskFlow.Client/Dockerfile
+      args:
+        TASKFLOW_RELEASE_ID: ${TASKFLOW_IMAGE_TAG:?TASKFLOW_IMAGE_TAG is required}
+    depends_on:
+      api:
+        condition: service_healthy
+    ports:
+      - "${TASKFLOW_HTTPS_PORT:?TASKFLOW_HTTPS_PORT is required}:8443"
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "--silent", "--show-error", "--max-time", "2", "http://127.0.0.1:8080/healthz"]
+      interval: 3s
+      timeout: 3s
+      retries: 30
+      start_period: 5s
+    read_only: true
+    tmpfs:
+      - /tmp:size=64m,mode=1777
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    stop_grace_period: 10s
+    restart: unless-stopped
+    networks:
+      backend:
+        ipv4_address: ${TASKFLOW_PROXY_IP:?TASKFLOW_PROXY_IP is required}
+
+volumes:
+  taskflow-postgres:
+
+networks:
+  backend:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: ${TASKFLOW_BACKEND_SUBNET:?TASKFLOW_BACKEND_SUBNET is required}

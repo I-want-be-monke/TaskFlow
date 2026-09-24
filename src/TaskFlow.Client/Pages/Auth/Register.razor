@@ -1,0 +1,86 @@
+@page "/auth/register"
+@inject AuthApiClient AuthApi
+@inject ApiAuthenticationStateProvider AuthState
+@inject NavigationManager Navigation
+
+<PageTitle>Register · TaskFlow</PageTitle>
+
+<section class="auth-card">
+    <div>
+        <p class="eyebrow">New workspace</p>
+        <h1>Create account</h1>
+        <p>Registration signs you in immediately when it is enabled by the server configuration.</p>
+    </div>
+
+    <ApiErrorPanel Problem="@_problem" />
+
+    <EditForm Model="@_model" OnValidSubmit="SubmitAsync" FormName="register">
+        <DataAnnotationsValidator />
+        <ValidationSummary />
+
+        <label>
+            User name
+            <InputText class="input" autocomplete="username" @bind-Value="_model.UserName" />
+            <ValidationMessage For="@(() => _model.UserName)" />
+        </label>
+
+        <label>
+            Password
+            <InputText class="input" type="password" autocomplete="new-password" @bind-Value="_model.Password" />
+            <span class="muted">Use at least 12 characters and 6 unique characters, with uppercase, lowercase, a number, and a symbol.</span>
+            <ValidationMessage For="@(() => _model.Password)" />
+        </label>
+
+        <label>
+            Confirm password
+            <InputText class="input" type="password" autocomplete="new-password" @bind-Value="_model.ConfirmPassword" />
+            <ValidationMessage For="@(() => _model.ConfirmPassword)" />
+        </label>
+
+        <button class="button button-primary" type="submit" disabled="@_submitting">
+            @(_submitting ? "Creating account…" : "Create account")
+        </button>
+    </EditForm>
+
+    <p class="muted">Already registered? <a href="/auth/login">Sign in</a>.</p>
+</section>
+
+@code {
+    private readonly RegisterFormModel _model = new();
+    private UiProblemState? _problem;
+    private bool _submitting;
+
+    protected override void OnInitialized()
+    {
+        if (AuthState.CurrentUser is not null)
+        {
+            Navigation.NavigateTo("/projects", replace: true);
+        }
+    }
+
+    private async Task SubmitAsync()
+    {
+        _submitting = true;
+        _problem = null;
+
+        try
+        {
+            await AuthApi.RegisterAsync(_model.UserName, _model.Password);
+            Navigation.NavigateTo("/projects", replace: true);
+        }
+        catch (ApiProblemException exception)
+        {
+            _problem = UiProblemState.From(exception);
+        }
+        catch (Exception)
+        {
+            _problem = UiProblemState.Unexpected();
+        }
+        finally
+        {
+            _submitting = false;
+            _model.Password = string.Empty;
+            _model.ConfirmPassword = string.Empty;
+        }
+    }
+}

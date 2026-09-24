@@ -1,0 +1,522 @@
+@page "/projects/{ProjectId:guid}"
+@attribute [Authorize]
+@inject ProjectsApiClient ProjectsApi
+@inject TasksApiClient TasksApi
+@inject TagsApiClient TagsApi
+@inject NavigationManager Navigation
+
+<PageTitle>Project · TaskFlow</PageTitle>
+
+<ApiErrorPanel Problem="@_problem" ReloadRequested="ReloadAsync" />
+
+@if (_loadingProject)
+{
+    <p class="loading-state">Loading project…</p>
+}
+else if (_project is not null)
+{
+    <section class="page-heading">
+        <div>
+            <p class="eyebrow">Project</p>
+            <div class="title-row">
+                <h1>@_project.Name</h1>
+                <span class="status-chip status-@_project.Status.ToLowerInvariant()">@_project.Status</span>
+            </div>
+            @if (!string.IsNullOrWhiteSpace(_project.Description))
+            {
+                <p class="page-description">@_project.Description</p>
+            }
+            <p class="muted">Version @_project.Version</p>
+        </div>
+        <div class="button-row wrap">
+            <a class="button button-secondary" href="@($"/projects/{ProjectId:D}/edit")">Edit project</a>
+            @if (IsArchived)
+            {
+                <button type="button" class="button button-primary" disabled="@_projectActionBusy" @onclick="RestoreAsync">Restore</button>
+            }
+            else
+            {
+                <button type="button" class="button button-secondary" disabled="@_projectActionBusy" @onclick="ArchiveAsync">Archive</button>
+            }
+            <button type="button" class="button button-danger" disabled="@_projectActionBusy" @onclick="BeginDeleteProject">Delete</button>
+        </div>
+    </section>
+
+    @if (_confirmDeleteProject)
+    {
+        <section class="confirm-panel" data-testid="project-delete-confirmation">
+            <div>
+                <strong>Delete this project?</strong>
+                <p>This action removes the project and its tasks. It cannot be undone.</p>
+            </div>
+            <div class="button-row">
+                <button type="button" class="button button-danger" disabled="@_projectActionBusy" @onclick="DeleteProjectAsync">Confirm delete</button>
+                <button type="button" class="button button-ghost" @onclick="CancelDeleteProject">Cancel</button>
+            </div>
+        </section>
+    }
+
+    @if (IsArchived)
+    {
+        <div class="alert alert-warning" role="status">
+            This project is archived. Task and Task↔Tag mutations are disabled until the project is restored.
+        </div>
+    }
+
+    <section class="section-heading">
+        <div>
+            <h2>Tasks</h2>
+            <p>Filter, sort and manage the tasks inside this project.</p>
+        </div>
+        @if (!IsArchived)
+        {
+            <a class="button button-primary" href="@($"/projects/{ProjectId:D}/tasks/new")">New task</a>
+        }
+    </section>
+
+    <section class="panel filter-panel" data-testid="task-filters">
+        <div class="filter-grid">
+            <label>
+                Search
+                <input class="input" aria-label="Search" @bind="_searchText" placeholder="Title or description" />
+            </label>
+            <label>
+                Status
+                <select class="input" aria-label="Status" @bind="_statusFilter">
+                    <option value="">All</option>
+                    @foreach (string status in TaskFormOptions.Statuses)
+                    {
+                        <option value="@status">@status</option>
+                    }
+                </select>
+            </label>
+            <label>
+                Priority
+                <select class="input" aria-label="Priority" @bind="_priorityFilter">
+                    <option value="">All</option>
+                    @foreach (string priority in TaskFormOptions.Priorities)
+                    {
+                        <option value="@priority">@priority</option>
+                    }
+                </select>
+            </label>
+            <label>
+                Tag
+                <select class="input" aria-label="Tag" @bind="_tagFilter">
+                    <option value="">All</option>
+                    @foreach (TagResponse tag in _tags)
+                    {
+                        <option value="@tag.Id">@tag.Name</option>
+                    }
+                </select>
+            </label>
+            <label>
+                Due after
+                <input class="input" type="date" @bind="_dueAfter" />
+            </label>
+            <label>
+                Due before
+                <input class="input" type="date" @bind="_dueBefore" />
+            </label>
+            <label>
+                Sort
+                <select class="input" aria-label="Sort" @bind="_sort">
+                    <option value="@TaskSort.CreatedAtDescending">Newest first</option>
+                    <option value="@TaskSort.CreatedAtAscending">Oldest first</option>
+                    <option value="@TaskSort.DueAtAscending">Due date ↑</option>
+                    <option value="@TaskSort.DueAtDescending">Due date ↓</option>
+                    <option value="@TaskSort.PriorityDescending">Priority ↓</option>
+                    <option value="@TaskSort.PriorityAscending">Priority ↑</option>
+                    <option value="@TaskSort.TitleAscending">Title A–Z</option>
+                    <option value="@TaskSort.TitleDescending">Title Z–A</option>
+                </select>
+            </label>
+        </div>
+        <div class="button-row">
+            <button type="button" class="button button-primary" disabled="@_loadingTasks" @onclick="ApplyFiltersAsync">Apply filters</button>
+            <button type="button" class="button button-ghost" disabled="@_loadingTasks" @onclick="ClearFiltersAsync">Clear</button>
+        </div>
+    </section>
+
+    @if (!string.IsNullOrWhiteSpace(_relationMessage))
+    {
+        <div class="alert alert-success" role="status">@_relationMessage</div>
+    }
+
+    @if (_loadingTasks)
+    {
+        <p class="loading-state">Loading tasks…</p>
+    }
+    else if (_tasks is null || _tasks.Items.Count == 0)
+    {
+        <section class="empty-state">
+            <h3>No matching tasks</h3>
+            <p>Create a task or change the filters.</p>
+        </section>
+    }
+    else
+    {
+        <div class="table-wrap">
+            <table class="data-table" data-testid="task-list">
+                <thead>
+                    <tr>
+                        <th>Task</th>
+                        <th>Status</th>
+                        <th>Priority</th>
+                        <th>Due</th>
+                        <th>Tag action</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (TaskResponse task in _tasks.Items)
+                    {
+                        <tr>
+                            <td>
+                                <strong>@task.Title</strong>
+                                @if (!string.IsNullOrWhiteSpace(task.Description))
+                                {
+                                    <div class="cell-description">@task.Description</div>
+                                }
+                                <div class="muted">v@task.Version</div>
+                            </td>
+                            <td><span class="status-chip">@task.Status</span></td>
+                            <td>@task.Priority</td>
+                            <td>@(task.DueAt?.ToLocalTime().ToString("g") ?? "—")</td>
+                            <td>
+                                @if (_tags.Count == 0)
+                                {
+                                    <span class="muted">Create a tag first</span>
+                                }
+                                else
+                                {
+                                    <div class="inline-stack">
+                                        <select class="input input-compact" value="@SelectedTagValue(task.Id)" @onchange="@(eventArgs => SelectTag(task.Id, eventArgs.Value?.ToString()))" disabled="@IsArchived">
+                                            <option value="">Choose tag</option>
+                                            @foreach (TagResponse tag in _tags)
+                                            {
+                                                <option value="@tag.Id">@tag.Name</option>
+                                            }
+                                        </select>
+                                        <div class="button-row compact">
+                                            <button type="button" class="button button-small" disabled="@(IsArchived || !HasSelectedTag(task.Id) || _taskActionBusy)" @onclick="() => AttachTagAsync(task.Id)">Attach</button>
+                                            <button type="button" class="button button-small button-ghost" disabled="@(IsArchived || !HasSelectedTag(task.Id) || _taskActionBusy)" @onclick="() => DetachTagAsync(task.Id)">Detach</button>
+                                        </div>
+                                    </div>
+                                }
+                            </td>
+                            <td>
+                                <div class="button-row compact wrap">
+                                    @if (!IsArchived)
+                                    {
+                                        <a class="button button-small button-secondary" href="@($"/tasks/{task.Id:D}/edit")">Edit</a>
+                                        @if (_pendingDeleteTaskId == task.Id)
+                                        {
+                                            <button type="button" class="button button-small button-danger" disabled="@_taskActionBusy" @onclick="() => DeleteTaskAsync(task)">Confirm</button>
+                                            <button type="button" class="button button-small button-ghost" @onclick="CancelTaskDelete">Cancel</button>
+                                        }
+                                        else
+                                        {
+                                            <button type="button" class="button button-small button-danger" disabled="@_taskActionBusy" @onclick="() => BeginTaskDelete(task.Id)">Delete</button>
+                                        }
+                                    }
+                                    else
+                                    {
+                                        <span class="muted">Read only</span>
+                                    }
+                                </div>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+
+        <PaginationControls Page="@_tasks.Page" TotalPages="@_tasks.TotalPages" Disabled="@_loadingTasks" PageChanged="ChangeTaskPageAsync" />
+    }
+}
+
+@code {
+    private const int TaskPageSize = 10;
+
+    [Parameter]
+    public Guid ProjectId { get; set; }
+
+    private ProjectResponse? _project;
+    private PagedResponse<TaskResponse>? _tasks;
+    private IReadOnlyList<TagResponse> _tags = [];
+    private readonly Dictionary<Guid, string?> _selectedTagIds = [];
+    private UiProblemState? _problem;
+    private bool _loadingProject = true;
+    private bool _loadingTasks = true;
+    private bool _projectActionBusy;
+    private bool _taskActionBusy;
+    private bool _confirmDeleteProject;
+    private Guid? _pendingDeleteTaskId;
+    private string? _relationMessage;
+
+    private string _searchText = string.Empty;
+    private string _statusFilter = string.Empty;
+    private string _priorityFilter = string.Empty;
+    private string _tagFilter = string.Empty;
+    private DateTime? _dueBefore;
+    private DateTime? _dueAfter;
+    private string _sort = TaskSort.CreatedAtDescending;
+    private int _taskPage = 1;
+
+    private bool IsArchived => string.Equals(_project?.Status, "Archived", StringComparison.Ordinal);
+
+    protected override async Task OnParametersSetAsync() => await ReloadAsync();
+
+    private async Task ReloadAsync()
+    {
+        _problem = null;
+        _relationMessage = null;
+        _loadingProject = true;
+
+        try
+        {
+            _project = await ProjectsApi.GetAsync(ProjectId);
+            _tags = await TagsApi.ListAllAsync();
+            await LoadTasksAsync();
+        }
+        catch (ApiProblemException exception)
+        {
+            _problem = UiProblemState.From(exception);
+        }
+        catch (Exception)
+        {
+            _problem = UiProblemState.Unexpected();
+        }
+        finally
+        {
+            _loadingProject = false;
+        }
+    }
+
+    private async Task LoadTasksAsync()
+    {
+        _loadingTasks = true;
+
+        try
+        {
+            var request = new TaskListRequest(
+                ProjectId: ProjectId,
+                Status: NullIfBlank(_statusFilter),
+                Priority: NullIfBlank(_priorityFilter),
+                TagId: ParseGuid(_tagFilter),
+                DueBefore: ParseDateBoundary(_dueBefore, endOfDay: true),
+                DueAfter: ParseDateBoundary(_dueAfter, endOfDay: false),
+                SearchText: NullIfBlank(_searchText),
+                Page: _taskPage,
+                PageSize: TaskPageSize,
+                Sort: _sort);
+
+            _tasks = await TasksApi.ListAsync(request);
+            foreach (TaskResponse task in _tasks.Items)
+            {
+                _selectedTagIds.TryAdd(task.Id, null);
+            }
+        }
+        catch (ApiProblemException exception)
+        {
+            _problem = UiProblemState.From(exception);
+        }
+        catch (Exception)
+        {
+            _problem = UiProblemState.Unexpected();
+        }
+        finally
+        {
+            _loadingTasks = false;
+        }
+    }
+
+    private async Task ArchiveAsync() => await ChangeProjectStateAsync(archive: true);
+    private async Task RestoreAsync() => await ChangeProjectStateAsync(archive: false);
+
+    private async Task ChangeProjectStateAsync(bool archive)
+    {
+        if (_project is null)
+        {
+            return;
+        }
+
+        _projectActionBusy = true;
+        _problem = null;
+
+        try
+        {
+            _project = archive
+                ? await ProjectsApi.ArchiveAsync(ProjectId, _project.Version)
+                : await ProjectsApi.RestoreAsync(ProjectId, _project.Version);
+        }
+        catch (ApiProblemException exception)
+        {
+            _problem = UiProblemState.From(exception);
+        }
+        catch (Exception)
+        {
+            _problem = UiProblemState.Unexpected();
+        }
+        finally
+        {
+            _projectActionBusy = false;
+        }
+    }
+
+    private void BeginDeleteProject() => _confirmDeleteProject = true;
+    private void CancelDeleteProject() => _confirmDeleteProject = false;
+
+    private async Task DeleteProjectAsync()
+    {
+        if (_project is null)
+        {
+            return;
+        }
+
+        _projectActionBusy = true;
+        _problem = null;
+
+        try
+        {
+            await ProjectsApi.DeleteAsync(ProjectId, _project.Version);
+            Navigation.NavigateTo("/projects", replace: true);
+        }
+        catch (ApiProblemException exception)
+        {
+            _problem = UiProblemState.From(exception);
+        }
+        catch (Exception)
+        {
+            _problem = UiProblemState.Unexpected();
+        }
+        finally
+        {
+            _projectActionBusy = false;
+        }
+    }
+
+    private async Task ApplyFiltersAsync()
+    {
+        _taskPage = 1;
+        _problem = null;
+        await LoadTasksAsync();
+    }
+
+    private async Task ClearFiltersAsync()
+    {
+        _searchText = string.Empty;
+        _statusFilter = string.Empty;
+        _priorityFilter = string.Empty;
+        _tagFilter = string.Empty;
+        _dueBefore = null;
+        _dueAfter = null;
+        _sort = TaskSort.CreatedAtDescending;
+        _taskPage = 1;
+        _problem = null;
+        await LoadTasksAsync();
+    }
+
+    private async Task ChangeTaskPageAsync(int page)
+    {
+        _taskPage = page;
+        await LoadTasksAsync();
+    }
+
+    private void BeginTaskDelete(Guid taskId) => _pendingDeleteTaskId = taskId;
+    private void CancelTaskDelete() => _pendingDeleteTaskId = null;
+
+    private async Task DeleteTaskAsync(TaskResponse task)
+    {
+        _taskActionBusy = true;
+        _problem = null;
+
+        try
+        {
+            await TasksApi.DeleteAsync(task.Id, task.Version);
+            _pendingDeleteTaskId = null;
+            await LoadTasksAsync();
+        }
+        catch (ApiProblemException exception)
+        {
+            _problem = UiProblemState.From(exception);
+        }
+        catch (Exception)
+        {
+            _problem = UiProblemState.Unexpected();
+        }
+        finally
+        {
+            _taskActionBusy = false;
+        }
+    }
+
+    private async Task AttachTagAsync(Guid taskId) => await ChangeTagRelationAsync(taskId, attach: true);
+    private async Task DetachTagAsync(Guid taskId) => await ChangeTagRelationAsync(taskId, attach: false);
+
+    private async Task ChangeTagRelationAsync(Guid taskId, bool attach)
+    {
+        Guid? tagId = ParseGuid(SelectedTagValue(taskId));
+        if (tagId is null)
+        {
+            return;
+        }
+
+        _taskActionBusy = true;
+        _problem = null;
+        _relationMessage = null;
+
+        try
+        {
+            if (attach)
+            {
+                await TasksApi.AddTagAsync(taskId, tagId.Value);
+                _relationMessage = "Tag attached. Attach is idempotent if the relation already exists.";
+            }
+            else
+            {
+                await TasksApi.RemoveTagAsync(taskId, tagId.Value);
+                _relationMessage = "Tag detached. Detach is idempotent if the relation did not exist.";
+            }
+        }
+        catch (ApiProblemException exception)
+        {
+            _problem = UiProblemState.From(exception);
+        }
+        catch (Exception)
+        {
+            _problem = UiProblemState.Unexpected();
+        }
+        finally
+        {
+            _taskActionBusy = false;
+        }
+    }
+
+    private string SelectedTagValue(Guid taskId) =>
+        _selectedTagIds.TryGetValue(taskId, out string? value) ? value ?? string.Empty : string.Empty;
+
+    private bool HasSelectedTag(Guid taskId) => ParseGuid(SelectedTagValue(taskId)) is not null;
+
+    private void SelectTag(Guid taskId, string? value) => _selectedTagIds[taskId] = value;
+
+    private static string? NullIfBlank(string value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+
+    private static Guid? ParseGuid(string? value) => Guid.TryParse(value, out Guid parsed) ? parsed : null;
+
+    private static DateTimeOffset? ParseDateBoundary(DateTime? value, bool endOfDay)
+    {
+        if (value is not DateTime date)
+        {
+            return null;
+        }
+
+        DateTime local = endOfDay
+            ? date.Date.AddDays(1).AddTicks(-1)
+            : date.Date;
+
+        local = DateTime.SpecifyKind(local, DateTimeKind.Local);
+        return new DateTimeOffset(local).ToUniversalTime();
+    }
+}

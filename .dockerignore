@@ -1,0 +1,21 @@
+.git
+.gitignore
+.gitattributes
+.env
+.env.*
+**/bin
+**/obj
+**/.vs
+**/.idea
+**/*.user
+**/*.suo
+coverage
+TestResults
+artifacts
+.local
+*.zip
+*.sha256
+
+# Host-side development / verification material is not required in runtime image builds.
+tools/
+tests/

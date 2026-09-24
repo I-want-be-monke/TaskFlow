@@ -1,0 +1,148 @@
+@page "/projects/{ProjectId:guid}/tasks/new"
+@attribute [Authorize]
+@inject ProjectsApiClient ProjectsApi
+@inject TasksApiClient TasksApi
+@inject NavigationManager Navigation
+
+<PageTitle>New task · TaskFlow</PageTitle>
+
+<section class="page-heading">
+    <div>
+        <p class="eyebrow">Task</p>
+        <h1>Create task</h1>
+        @if (_project is not null)
+        {
+            <p>Project: <strong>@_project.Name</strong></p>
+        }
+    </div>
+    <a class="button button-ghost" href="@($"/projects/{ProjectId:D}")">Back</a>
+</section>
+
+<ApiErrorPanel Problem="@_problem" ReloadRequested="LoadProjectAsync" />
+
+@if (_loading)
+{
+    <p class="loading-state">Loading project…</p>
+}
+else if (_project is not null && string.Equals(_project.Status, "Archived", StringComparison.Ordinal))
+{
+    <div class="alert alert-warning" role="alert">
+        This project is archived. Restore it before creating a task.
+    </div>
+}
+else if (_project is not null)
+{
+    <section class="panel form-panel" data-testid="task-create-form">
+        <EditForm Model="@_model" OnValidSubmit="CreateAsync" FormName="task-create">
+            <DataAnnotationsValidator />
+            <ValidationSummary />
+
+            <label>
+                Title
+                <InputText class="input" @bind-Value="_model.Title" />
+                <ValidationMessage For="@(() => _model.Title)" />
+            </label>
+            <label>
+                Description
+                <InputTextArea class="input textarea" @bind-Value="_model.Description" />
+                <ValidationMessage For="@(() => _model.Description)" />
+            </label>
+            <div class="form-grid two-columns">
+                <label>
+                    Status
+                    <InputSelect class="input" @bind-Value="_model.Status">
+                        @foreach (string status in TaskFormOptions.Statuses)
+                        {
+                            <option value="@status">@status</option>
+                        }
+                    </InputSelect>
+                </label>
+                <label>
+                    Priority
+                    <InputSelect class="input" @bind-Value="_model.Priority">
+                        @foreach (string priority in TaskFormOptions.Priorities)
+                        {
+                            <option value="@priority">@priority</option>
+                        }
+                    </InputSelect>
+                </label>
+            </div>
+            <label>
+                Due date and time
+                <InputDate class="input" @bind-Value="_model.DueAtLocal" Type="InputDateType.DateTimeLocal" />
+            </label>
+
+            <div class="button-row">
+                <button class="button button-primary" type="submit" disabled="@_saving">@(_saving ? "Creating…" : "Create task")</button>
+                <a class="button button-ghost" href="@($"/projects/{ProjectId:D}")">Cancel</a>
+            </div>
+        </EditForm>
+    </section>
+}
+
+@code {
+    [Parameter]
+    public Guid ProjectId { get; set; }
+
+    private readonly TaskFormModel _model = new();
+    private ProjectResponse? _project;
+    private UiProblemState? _problem;
+    private bool _loading = true;
+    private bool _saving;
+
+    protected override async Task OnParametersSetAsync() => await LoadProjectAsync();
+
+    private async Task LoadProjectAsync()
+    {
+        _loading = true;
+        _problem = null;
+
+        try
+        {
+            _project = await ProjectsApi.GetAsync(ProjectId);
+        }
+        catch (ApiProblemException exception)
+        {
+            _problem = UiProblemState.From(exception);
+        }
+        catch (Exception)
+        {
+            _problem = UiProblemState.Unexpected();
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private async Task CreateAsync()
+    {
+        _saving = true;
+        _problem = null;
+
+        try
+        {
+            var request = new CreateTaskRequest(
+                _model.Title,
+                _model.Description,
+                _model.Status,
+                _model.Priority,
+                DateTimeMapping.ToApi(_model.DueAtLocal));
+
+            await TasksApi.CreateAsync(ProjectId, request);
+            Navigation.NavigateTo($"/projects/{ProjectId:D}");
+        }
+        catch (ApiProblemException exception)
+        {
+            _problem = UiProblemState.From(exception);
+        }
+        catch (Exception)
+        {
+            _problem = UiProblemState.Unexpected();
+        }
+        finally
+        {
+            _saving = false;
+        }
+    }
+}

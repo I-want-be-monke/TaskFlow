@@ -1,0 +1,124 @@
+@page "/projects/{ProjectId:guid}/edit"
+@attribute [Authorize]
+@inject ProjectsApiClient ProjectsApi
+@inject NavigationManager Navigation
+
+<PageTitle>Edit project · TaskFlow</PageTitle>
+
+<section class="page-heading">
+    <div>
+        <p class="eyebrow">Project</p>
+        <h1>Edit project</h1>
+    </div>
+    <a class="button button-ghost" href="@($"/projects/{ProjectId:D}")">Back</a>
+</section>
+
+<ApiErrorPanel Problem="@_problem" ReloadRequested="ReloadAsync" />
+
+@if (_loading)
+{
+    <p class="loading-state">Loading project…</p>
+}
+else if (_project is not null)
+{
+    <section class="panel form-panel" data-testid="project-edit-form">
+        <div class="entity-meta">
+            <span class="status-chip status-@_project.Status.ToLowerInvariant()">@_project.Status</span>
+            <span>Version @_project.Version</span>
+        </div>
+
+        <EditForm Model="@_model" OnValidSubmit="SaveAsync" FormName="project-edit">
+            <DataAnnotationsValidator />
+            <ValidationSummary />
+
+            <label>
+                Name
+                <InputText class="input" @bind-Value="_model.Name" />
+                <ValidationMessage For="@(() => _model.Name)" />
+            </label>
+            <label>
+                Description
+                <InputTextArea class="input textarea" @bind-Value="_model.Description" />
+                <ValidationMessage For="@(() => _model.Description)" />
+            </label>
+            <div class="button-row">
+                <button type="submit" class="button button-primary" disabled="@_saving">
+                    @(_saving ? "Saving…" : "Save changes")
+                </button>
+                <a class="button button-ghost" href="@($"/projects/{ProjectId:D}")">Cancel</a>
+            </div>
+        </EditForm>
+    </section>
+}
+
+@code {
+    [Parameter]
+    public Guid ProjectId { get; set; }
+
+    private readonly ProjectFormModel _model = new();
+    private ProjectResponse? _project;
+    private UiProblemState? _problem;
+    private bool _loading = true;
+    private bool _saving;
+
+    protected override async Task OnParametersSetAsync() => await ReloadAsync();
+
+    private async Task ReloadAsync()
+    {
+        _loading = true;
+        _problem = null;
+
+        try
+        {
+            _project = await ProjectsApi.GetAsync(ProjectId);
+            _model.Name = _project.Name;
+            _model.Description = _project.Description;
+        }
+        catch (ApiProblemException exception)
+        {
+            _problem = UiProblemState.From(exception);
+        }
+        catch (Exception)
+        {
+            _problem = UiProblemState.Unexpected();
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private async Task SaveAsync()
+    {
+        if (_project is null)
+        {
+            return;
+        }
+
+        _saving = true;
+        _problem = null;
+
+        try
+        {
+            ProjectResponse updated = await ProjectsApi.UpdateAsync(
+                ProjectId,
+                _model.Name,
+                _model.Description,
+                _project.Version);
+            _project = updated;
+            Navigation.NavigateTo($"/projects/{ProjectId:D}");
+        }
+        catch (ApiProblemException exception)
+        {
+            _problem = UiProblemState.From(exception);
+        }
+        catch (Exception)
+        {
+            _problem = UiProblemState.Unexpected();
+        }
+        finally
+        {
+            _saving = false;
+        }
+    }
+}

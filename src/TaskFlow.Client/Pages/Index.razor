@@ -1,0 +1,24 @@
+@page "/"
+
+<PageTitle>TaskFlow</PageTitle>
+
+<section class="hero">
+    <p class="eyebrow">TaskFlow v1</p>
+    <h1>Projects, tasks and tags in one workspace.</h1>
+    <p class="hero-copy">The browser UI uses the typed API client layer, cookie sessions and antiforgery protection.</p>
+
+    <AuthorizeView>
+        <Authorized>
+            <div class="button-row">
+                <a class="button button-primary" href="/projects">Open projects</a>
+                <a class="button button-secondary" href="/tags">Manage tags</a>
+            </div>
+        </Authorized>
+        <NotAuthorized>
+            <div class="button-row">
+                <a class="button button-primary" href="/auth/login">Sign in</a>
+                <a class="button button-secondary" href="/auth/register">Create account</a>
+            </div>
+        </NotAuthorized>
+    </AuthorizeView>
+</section>

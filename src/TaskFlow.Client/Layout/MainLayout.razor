@@ -1,0 +1,63 @@
+@inherits LayoutComponentBase
+@inject TaskFlow.Client.Auth.AuthApiClient AuthApi
+@inject NavigationManager Navigation
+
+<div class="page-shell">
+    <header class="app-header">
+        <a class="brand" href="/">TaskFlow</a>
+        <AuthorizeView>
+            <Authorized Context="auth">
+                <nav class="main-nav" aria-label="Primary">
+                    <NavLink href="/projects" Match="NavLinkMatch.Prefix">Projects</NavLink>
+                    <NavLink href="/tags" Match="NavLinkMatch.Prefix">Tags</NavLink>
+                </nav>
+                <div class="session-actions">
+                    <span class="session-user">@auth.User.Identity?.Name</span>
+                    <button type="button" class="button button-ghost" disabled="@_loggingOut" @onclick="LogoutAsync">
+                        @(_loggingOut ? "Signing out…" : "Logout")
+                    </button>
+                </div>
+            </Authorized>
+            <NotAuthorized>
+                <nav class="main-nav" aria-label="Authentication">
+                    <NavLink href="/auth/login">Login</NavLink>
+                    <NavLink href="/auth/register">Register</NavLink>
+                </nav>
+            </NotAuthorized>
+        </AuthorizeView>
+    </header>
+
+    @if (!string.IsNullOrWhiteSpace(_logoutError))
+    {
+        <div class="alert alert-error" role="alert">@_logoutError</div>
+    }
+
+    <main>
+        @Body
+    </main>
+</div>
+
+@code {
+    private bool _loggingOut;
+    private string? _logoutError;
+
+    private async Task LogoutAsync()
+    {
+        _loggingOut = true;
+        _logoutError = null;
+
+        try
+        {
+            await AuthApi.LogoutAsync();
+            Navigation.NavigateTo("/auth/login", replace: true);
+        }
+        catch (Exception)
+        {
+            _logoutError = "Sign out failed. Please try again.";
+        }
+        finally
+        {
+            _loggingOut = false;
+        }
+    }
+}

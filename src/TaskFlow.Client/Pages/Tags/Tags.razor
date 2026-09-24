@@ -1,0 +1,279 @@
+@page "/tags"
+@attribute [Authorize]
+@inject TagsApiClient TagsApi
+
+<PageTitle>Tags · TaskFlow</PageTitle>
+
+<section class="page-heading">
+    <div>
+        <p class="eyebrow">Classification</p>
+        <h1>Tags</h1>
+        <p>Create reusable tags for tasks. Tag names are normalized by the server and unique per owner.</p>
+    </div>
+    <button type="button" class="button button-primary" @onclick="ToggleCreate">@(_showCreate ? "Cancel" : "New tag")</button>
+</section>
+
+<ApiErrorPanel Problem="@_problem" ReloadRequested="ReloadAfterConflictAsync" />
+
+@if (_showCreate)
+{
+    <section class="panel form-panel" data-testid="tag-create-form">
+        <h2>Create tag</h2>
+        <EditForm Model="@_createModel" OnValidSubmit="CreateAsync" FormName="tag-create">
+            <DataAnnotationsValidator />
+            <ValidationSummary />
+            <label>
+                Name
+                <InputText class="input" @bind-Value="_createModel.Name" />
+                <ValidationMessage For="@(() => _createModel.Name)" />
+            </label>
+            <div class="button-row">
+                <button type="submit" class="button button-primary" disabled="@_busy">@(_busy ? "Creating…" : "Create tag")</button>
+                <button type="button" class="button button-ghost" @onclick="ToggleCreate">Cancel</button>
+            </div>
+        </EditForm>
+    </section>
+}
+
+@if (_loading)
+{
+    <p class="loading-state">Loading tags…</p>
+}
+else if (_page is null || _page.Items.Count == 0)
+{
+    <section class="empty-state">
+        <h2>No tags yet</h2>
+        <p>Create a tag, then attach it to tasks from a project page.</p>
+    </section>
+}
+else
+{
+    <div class="table-wrap">
+        <table class="data-table" data-testid="tags-list">
+            <thead>
+                <tr>
+                    <th>Name</th>
+                    <th>Version</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (TagResponse tag in _page.Items)
+                {
+                    <tr>
+                        <td>
+                            @if (_editingTagId == tag.Id)
+                            {
+                                <EditForm Model="@_editModel" OnValidSubmit="SaveEditAsync" FormName="@($"tag-edit-{tag.Id:D}")">
+                                    <DataAnnotationsValidator />
+                                    <div class="inline-edit">
+                                        <InputText class="input input-compact" @bind-Value="_editModel.Name" />
+                                        <ValidationMessage For="@(() => _editModel.Name)" />
+                                        <div class="button-row compact">
+                                            <button type="submit" class="button button-small button-primary" disabled="@_busy">Save</button>
+                                            <button type="button" class="button button-small button-ghost" @onclick="CancelEdit">Cancel</button>
+                                        </div>
+                                    </div>
+                                </EditForm>
+                            }
+                            else
+                            {
+                                <strong>@tag.Name</strong>
+                            }
+                        </td>
+                        <td>@tag.Version</td>
+                        <td>
+                            <div class="button-row compact wrap">
+                                @if (_editingTagId == tag.Id)
+                                {
+                                    <span class="muted">Editing</span>
+                                }
+                                else if (_pendingDeleteTagId == tag.Id)
+                                {
+                                    <button type="button" class="button button-small button-danger" disabled="@_busy" @onclick="() => DeleteAsync(tag)">Confirm delete</button>
+                                    <button type="button" class="button button-small button-ghost" @onclick="CancelDelete">Cancel</button>
+                                }
+                                else
+                                {
+                                    <button type="button" class="button button-small button-secondary" @onclick="() => BeginEdit(tag)">Edit</button>
+                                    <button type="button" class="button button-small button-danger" @onclick="() => BeginDelete(tag.Id)">Delete</button>
+                                }
+                            </div>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+
+    <PaginationControls Page="@_page.Page" TotalPages="@_page.TotalPages" Disabled="@_loading" PageChanged="ChangePageAsync" />
+}
+
+@code {
+    private const int PageSize = 20;
+    private readonly TagFormModel _createModel = new();
+    private readonly TagFormModel _editModel = new();
+    private PagedResponse<TagResponse>? _page;
+    private UiProblemState? _problem;
+    private bool _loading = true;
+    private bool _busy;
+    private bool _showCreate;
+    private int _pageNumber = 1;
+    private Guid? _editingTagId;
+    private long _editingVersion;
+    private Guid? _pendingDeleteTagId;
+
+    protected override async Task OnInitializedAsync() => await LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        _problem = null;
+
+        try
+        {
+            _page = await TagsApi.ListAsync(_pageNumber, PageSize);
+        }
+        catch (ApiProblemException exception)
+        {
+            _problem = UiProblemState.From(exception);
+        }
+        catch (Exception)
+        {
+            _problem = UiProblemState.Unexpected();
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private void ToggleCreate()
+    {
+        _showCreate = !_showCreate;
+        _problem = null;
+    }
+
+    private async Task CreateAsync()
+    {
+        _busy = true;
+        _problem = null;
+
+        try
+        {
+            await TagsApi.CreateAsync(_createModel.Name);
+            _createModel.Name = string.Empty;
+            _showCreate = false;
+            _pageNumber = 1;
+            await LoadAsync();
+        }
+        catch (ApiProblemException exception)
+        {
+            _problem = UiProblemState.From(exception);
+        }
+        catch (Exception)
+        {
+            _problem = UiProblemState.Unexpected();
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private void BeginEdit(TagResponse tag)
+    {
+        _editingTagId = tag.Id;
+        _editingVersion = tag.Version;
+        _editModel.Name = tag.Name;
+        _pendingDeleteTagId = null;
+        _problem = null;
+    }
+
+    private void CancelEdit()
+    {
+        _editingTagId = null;
+        _editModel.Name = string.Empty;
+    }
+
+    private async Task SaveEditAsync()
+    {
+        if (_editingTagId is not Guid tagId)
+        {
+            return;
+        }
+
+        _busy = true;
+        _problem = null;
+
+        try
+        {
+            await TagsApi.UpdateAsync(tagId, _editModel.Name, _editingVersion);
+            CancelEdit();
+            await LoadAsync();
+        }
+        catch (ApiProblemException exception)
+        {
+            _problem = UiProblemState.From(exception);
+        }
+        catch (Exception)
+        {
+            _problem = UiProblemState.Unexpected();
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private void BeginDelete(Guid tagId)
+    {
+        _pendingDeleteTagId = tagId;
+        _editingTagId = null;
+        _problem = null;
+    }
+
+    private void CancelDelete() => _pendingDeleteTagId = null;
+
+    private async Task DeleteAsync(TagResponse tag)
+    {
+        _busy = true;
+        _problem = null;
+
+        try
+        {
+            await TagsApi.DeleteAsync(tag.Id, tag.Version);
+            _pendingDeleteTagId = null;
+            await LoadAsync();
+        }
+        catch (ApiProblemException exception)
+        {
+            _problem = UiProblemState.From(exception);
+        }
+        catch (Exception)
+        {
+            _problem = UiProblemState.Unexpected();
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+
+    private async Task ReloadAfterConflictAsync()
+    {
+        _editingTagId = null;
+        _pendingDeleteTagId = null;
+        _editModel.Name = string.Empty;
+        await LoadAsync();
+    }
+
+    private async Task ChangePageAsync(int page)
+    {
+        _pageNumber = page;
+        _editingTagId = null;
+        _pendingDeleteTagId = null;
+        await LoadAsync();
+    }
+}
