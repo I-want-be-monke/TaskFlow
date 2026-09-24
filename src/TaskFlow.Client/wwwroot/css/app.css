@@ -1,0 +1,20 @@
+html, body {
+  font-family: system-ui, sans-serif;
+  margin: 0;
+}
+
+.page-shell {
+  max-width: 72rem;
+  margin: 0 auto;
+  padding: 1.5rem;
+}
+
+.app-header {
+  margin-bottom: 2rem;
+}
+
+.app-header a {
+  color: inherit;
+  font-weight: 700;
+  text-decoration: none;
+}
