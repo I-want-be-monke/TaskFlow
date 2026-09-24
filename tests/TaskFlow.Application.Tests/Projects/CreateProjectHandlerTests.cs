@@ -84,6 +84,29 @@ public sealed class CreateProjectHandlerTests
     }
 
     [Fact]
+    public async Task HandleAsync_PersistenceConflict_IsReturnedAsTypedFailure()
+    {
+        FakeUnitOfWork unitOfWork = new()
+        {
+            NextResult = TaskFlow.Application.Common.Results.Result.Failure(
+                ApplicationErrors.Conflict("persistence.concurrency_conflict", "Concurrent write.")),
+        };
+        CreateProjectHandler handler = new(
+            new FakeCurrentActor(true, OwnerId),
+            new FakeProjectRepository(),
+            unitOfWork,
+            new FakeTimeProvider(Now));
+
+        var result = await handler.HandleAsync(
+            new CreateProjectCommand("Name", null),
+            CancellationToken.None);
+
+        Assert.True(result.IsFailure);
+        Assert.Equal(ErrorType.Conflict, result.Error!.Type);
+        Assert.Equal("persistence.concurrency_conflict", result.Error.Code.Value);
+    }
+
+    [Fact]
     public async Task HandleAsync_DescriptionTooLong_ReturnsValidation()
     {
         CreateProjectHandler handler = new(

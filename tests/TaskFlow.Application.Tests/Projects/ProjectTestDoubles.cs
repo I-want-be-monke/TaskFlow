@@ -1,3 +1,4 @@
+using TaskFlow.Application.Common.Results;
 using TaskFlow.Application.Common.Abstractions;
 using TaskFlow.Application.Common.Pagination;
 using TaskFlow.Application.Projects;
@@ -132,11 +133,13 @@ internal sealed class FakeUnitOfWork : IUnitOfWork
 
     public CancellationToken LastCancellationToken { get; private set; }
 
-    public Task SaveChangesAsync(CancellationToken cancellationToken)
+    public Result NextResult { get; set; } = Result.Success();
+
+    public Task<Result> SaveChangesAsync(CancellationToken cancellationToken)
     {
         SaveCount++;
         LastCancellationToken = cancellationToken;
-        return Task.CompletedTask;
+        return Task.FromResult(NextResult);
     }
 }
 

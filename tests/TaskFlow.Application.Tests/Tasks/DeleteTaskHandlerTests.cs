@@ -70,6 +70,29 @@ public sealed class DeleteTaskHandlerTests
     }
 
     [Fact]
+    public async Task HandleAsync_PersistenceConflict_IsReturnedAsTypedFailure()
+    {
+        TaskItem task = TaskTagTestFactory.CreateTask(ProjectId, TaskId);
+        FakeTaskRepository tasks = new() { OwnerUserId = OwnerId, TaskToReturn = task };
+        FakeUnitOfWork unitOfWork = new()
+        {
+            NextResult = TaskFlow.Application.Common.Results.Result.Failure(
+                ApplicationErrors.Conflict("persistence.concurrency_conflict", "Concurrent write.")),
+        };
+        DeleteTaskHandler handler = CreateHandler(
+            new FakeProjectRepository { ProjectToReturn = ProjectTestFactory.Create(OwnerId, ProjectId) },
+            tasks,
+            unitOfWork,
+            new FakeTransactionManager());
+
+        var result = await handler.HandleAsync(new DeleteTaskCommand(TaskId, 1), CancellationToken.None);
+
+        Assert.True(result.IsFailure);
+        Assert.Equal(ErrorType.Conflict, result.Error!.Type);
+        Assert.Equal("persistence.concurrency_conflict", result.Error.Code.Value);
+    }
+
+    [Fact]
     public async Task HandleAsync_MissingTask_ReturnsNotFound()
     {
         DeleteTaskHandler handler = CreateHandler(
