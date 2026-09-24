@@ -1,53 +1,56 @@
-# TaskFlow — Stage 5
+# TaskFlow — Stage 6
 
-TaskFlow is implemented stage-by-stage from the architecture contract. **Stages 0–5 are complete in this snapshot**: repository/build foundation, Domain, Application Core, all v1 Application use cases, and now the PostgreSQL/EF Core persistence model with the initial migration and real PostgreSQL integration-test contract.
+TaskFlow реализуется по этапам архитектурного контракта. **Stages 0–6 завершены в этом snapshot**: repository/build foundation, Domain, Application Core, все v1 use cases, PostgreSQL/EF Core schema и теперь полноценная реализация persistence ports, transactions, row locks, read queries и optimistic concurrency.
 
-## What is ready
+## Что готово
 
 - pinned .NET **10.0.401** / C# 14 build contract;
-- locked NuGet restore and preserved dependency direction;
-- all Domain/Application work from Stages 1–4;
-- EF Core **10.0.12** and Npgsql EF provider **10.0.3** only at the Infrastructure boundary;
-- one production `TaskFlowDbContext` owning Identity + business + Data Protection schema;
-- `ApplicationUser : IdentityUser<Guid>` without Identity leakage into Domain/Application;
-- explicit Fluent mappings for every entity; no EF attributes in Domain;
-- PostgreSQL `snake_case` table/column names and `timestamptz` timestamps;
-- enum-to-string mappings for Project/Task status and Task priority;
-- business check constraints, FK delete behavior and required indexes;
-- unique `(owner_user_id, normalized_name)` constraint for Tags;
-- `Version` mapped as an EF concurrency token on Project, TaskItem and Tag;
-- shared Data Protection key table `data_protection_keys`;
-- initial migration `20260924170000_InitialCreate` and a static model snapshot;
-- design-time `TaskFlowDbContextFactory` for future local `dotnet ef` commands;
-- PostgreSQL Testcontainers integration tests using `postgres:18-alpine`;
-- Git history from Stages 0–5 preserved in `.git`.
+- locked NuGet restore и сохранённое направление зависимостей;
+- Domain/Application из Stages 1–4;
+- PostgreSQL/EF Core schema + initial migration из Stage 5;
+- реальные `ProjectRepository`, `TaskRepository`, `TagRepository`;
+- реальные `ProjectQueries`, `TaskQueries`, `TagQueries`;
+- owner-scoped write/read access;
+- read path: `AsNoTracking()` → filtering/sorting → projection → pagination;
+- `IQueryable` не выходит из Infrastructure;
+- `EfTransactionManager` с explicit PostgreSQL transaction boundary;
+- `SELECT ... FOR UPDATE` для Project/Task/Tag lock path;
+- canonical lock order: `Project -> TaskItem -> Tag/TaskTag`;
+- `VersionConcurrencyInterceptor` увеличивает `Version` на `original + 1` для изменяемых aggregate roots;
+- `UnitOfWork` возвращает typed `Result` и переводит `DbUpdateConcurrencyException` в `Conflict`;
+- unique `(owner_user_id, normalized_name)` race переводится в `tags.duplicate_name` conflict;
+- query filters/sorting/pagination для Task search;
+- PostgreSQL integration tests для owner scope, no-tracking, row locks, version conflicts, unique races и deadlock regression;
+- ArchiveProject concurrency tests против Create/Update/Delete Task и Add/Remove Tag;
+- Git history Stages 0–6 сохранена в `.git`.
 
-## Verify Stage 5
+## Проверка Stage 6
 
-Prerequisites:
+Нужны:
 
 ```text
 .NET SDK 10.0.401
 Docker Engine / Docker Desktop
 ```
 
-From the repository root:
+Из корня репозитория:
 
 ```bash
-./scripts/verify-stage5.sh
+./scripts/verify-stage6.sh
 ```
 
-The script performs:
+Скрипт выполняет:
 
 ```text
-Stage 0–5 architecture/source checks
+Stage 0–6 architecture/source checks
 -> dotnet restore TaskFlow.sln --locked-mode
 -> Release build
 -> Docker availability check
--> all unit + PostgreSQL integration tests
+-> unit tests
+-> PostgreSQL/Testcontainers integration + concurrency tests
 ```
 
-Equivalent core commands:
+Эквивалентные основные команды:
 
 ```bash
 python3 scripts/verify_project_references.py
@@ -55,6 +58,7 @@ python3 scripts/verify_application_contracts.py
 python3 scripts/verify_project_features.py
 python3 scripts/verify_task_tag_features.py
 python3 scripts/verify_infrastructure_stage5.py
+python3 scripts/verify_infrastructure_stage6.py
 
 dotnet restore TaskFlow.sln --locked-mode
 dotnet build TaskFlow.sln --no-restore --configuration Release
@@ -62,41 +66,70 @@ docker info
 dotnet test TaskFlow.sln --no-build --no-restore --configuration Release
 ```
 
-Expected result on a machine with the pinned SDK and Docker: locked restore succeeds, Release build has **0 warnings / 0 errors**, unit tests pass, Testcontainers starts a clean PostgreSQL 18 instance, the initial migration applies successfully, and the schema/integrity integration tests pass.
+Ожидаемый результат на машине с pinned SDK и Docker: locked restore успешен, Release build без warnings/errors, unit tests зелёные, Testcontainers запускает PostgreSQL 18, migration применяется, persistence/concurrency tests проходят.
 
-## Local EF migration commands
+## Persistence boundary
 
-The design-time factory reads the same architecture-standard environment key as runtime configuration:
+Write path:
 
-```bash
-export ConnectionStrings__Postgres='Host=localhost;Port=5432;Database=taskflow;Username=taskflow_migrator;Password=change-me'
+```text
+Application Handler
+-> owner-scoped repository
+-> Domain method
+-> UnitOfWork
+-> EF Core / PostgreSQL
 ```
 
-Then future migrations can be created from the repository root with:
+Read path:
 
-```bash
-dotnet ef migrations add <MigrationName> \
-  --project src/TaskFlow.Infrastructure \
-  --context TaskFlowDbContext \
-  --output-dir Persistence/Migrations
+```text
+owner-scoped predicate
+-> AsNoTracking
+-> filters / whitelist sort
+-> projection to read model
+-> pagination
 ```
 
-Do **not** add `Database.Migrate()` to API startup. Production migration execution remains the responsibility of the separate `TaskFlow.DbMigrator` implemented at Stage 11.
+Project-dependent mutations выполняются в transaction boundary и берут locks в одном порядке:
 
-## Current boundary
+```text
+1. Project
+2. TaskItem
+3. Tag / TaskTag
+```
 
-Stage 5 defines and tests the database model, but it intentionally does **not** implement the persistence ports yet. Stage 6 still owns:
+`GetOwnedForUpdateAsync(...)` намеренно требует активную транзакцию. Вызов вне `ITransactionManager` считается ошибкой программирования.
 
-- repositories and read-query implementations;
-- `AsNoTracking` projections;
-- `IUnitOfWork` / `ITransactionManager` implementations;
-- real PostgreSQL `SELECT ... FOR UPDATE` behavior;
-- `Version` increment policy and `DbUpdateConcurrencyException` mapping;
-- unique-constraint race mapping to typed `Conflict`;
-- concurrency/deadlock integration tests.
+## Optimistic concurrency
 
-## Verification status of this archive
+`Project`, `TaskItem`, `Tag` имеют `Version` как EF concurrency token. Перед `UPDATE` interceptor выставляет:
 
-All available source/architecture checks, lock-graph consistency checks, JSON/XML parsing, Git checks and archive integrity checks are executed while creating this snapshot. The artifact-generation container does not contain the .NET SDK or Docker, so this response does **not** claim that `dotnet restore/build/test` or the Testcontainers suite ran inside that container. `scripts/verify-stage5.sh` is the reproducible full verification command for a normal development machine.
+```text
+current Version = original Version + 1
+```
 
-Detailed decisions: [`docs/STAGE_5_RATIONALE.md`](docs/STAGE_5_RATIONALE.md). Previous stage rationale files remain in `docs/`.
+EF формирует write с проверкой исходной версии. Если запись уже изменилась, `DbUpdateConcurrencyException` переводится в typed Application `Conflict`, а не утекает наружу как provider exception.
+
+Application pre-check версии остаётся для понятного normal-path ответа, а database concurrency token закрывает гонку между read и write.
+
+## Что остаётся на Stage 7
+
+Stage 6 заканчивает persistence layer. Следующий этап строит HTTP boundary:
+
+- Composition Root в `TaskFlow.Api/Program.cs`;
+- регистрация handlers и Infrastructure adapters;
+- `ProblemDetails`;
+- typed `Result -> HTTP` mapping;
+- `/api/v1` contract;
+- request/response DTO;
+- Projects/Tasks/Tags/TaskTag controllers/endpoints;
+- `201 Created` + `Location`;
+- запрет возврата Domain entities из API.
+
+Authentication/authorization/CSRF остаются Stage 8.
+
+## Статус проверки этого архива
+
+При создании snapshot выполнены все доступные source/architecture проверки, XML/JSON проверки, Git checks и archive integrity checks. В текущем artifact-контейнере отсутствуют `dotnet` и Docker, поэтому этот README **не утверждает**, что runtime `dotnet restore/build/test` или Testcontainers suite были запущены внутри него. `./scripts/verify-stage6.sh` — воспроизводимая полная проверка на обычной dev-машине.
+
+Подробные решения: [`docs/STAGE_6_RATIONALE.md`](docs/STAGE_6_RATIONALE.md).
