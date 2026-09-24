@@ -512,6 +512,13 @@
           "xunit.v3.extensibility.core": "[4.0.0]",
           "xunit.v3.runner.common": "[4.0.0]"
         }
+      },
+      "TaskFlow.Api": {
+        "type": "Project",
+        "dependencies": {
+          "TaskFlow.Application": "[1.0.0, )",
+          "TaskFlow.Infrastructure": "[1.0.0, )"
+        }
       }
     }
   }
