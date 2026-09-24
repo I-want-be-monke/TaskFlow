@@ -1,147 +1,190 @@
-# TaskFlow — Stage 12
+# TaskFlow — Stage 13
 
-TaskFlow реализуется по архитектурным этапам. **Stages 0–12 завершены в этом snapshot**: repository/build foundation, Domain/Application, PostgreSQL persistence/concurrency, REST API, cookie/CSRF security, production hardening, structured observability, one-shot DbMigrator и теперь standalone Blazor WebAssembly client foundation.
+TaskFlow реализуется по архитектурным этапам. **Stages 0–13 завершены в этом snapshot**: backend, PostgreSQL, security, observability, one-shot DbMigrator, standalone Blazor WASM client foundation и теперь полный обязательный browser CRUD flow.
 
-## Что добавлено на Stage 12
+## Что добавлено на Stage 13
 
-- `TaskFlow.Client` переведён на `Microsoft.NET.Sdk.BlazorWebAssembly`;
-- standalone WASM bootstrap (`Program.cs`, `App.razor`, `wwwroot/index.html`);
-- `ApiProblemReader` + typed `ApiProblemException`;
-- `ApiAuthenticationStateProvider` с восстановлением session только через `/api/v1/auth/me`;
-- `AntiforgeryTokenProvider` с token только в памяти вкладки;
-- `AntiforgeryHandler`, автоматически добавляющий `X-XSRF-TOKEN` к unsafe requests;
-- `AuthApiClient` с корректным antiforgery lifecycle после register/login/logout;
-- `ProjectsApiClient`, `TasksApiClient`, `TagsApiClient`;
-- отдельные client request/response models без ссылок на серверные assemblies;
-- typed `409` conflict surface для будущего reload-required UX;
-- frontend boundary tests;
-- `scripts/verify-stage12.sh`.
+- `/auth/login` и `/auth/register`;
+- authenticated layout/navigation + logout;
+- `/projects` со списком, pagination и созданием;
+- `/projects/{id}` с project state, archive/restore/delete и task workspace;
+- `/projects/{id}/edit`;
+- `/projects/{id}/tasks/new`;
+- `/tasks/{id}/edit`;
+- `/tags` с create/edit/delete и pagination;
+- task filters по status/priority/tag/due/search;
+- task sort + pagination;
+- task create/edit/delete;
+- Task↔Tag attach/detach;
+- DataAnnotations validation;
+- loading/empty/error states;
+- explicit `409 version_conflict -> Reload latest` UX;
+- safe text rendering без `MarkupString`/`innerHTML`;
+- component/source smoke guard `verify_client_ui_stage13.py`;
+- executable UI state/form tests;
+- `scripts/verify-stage13.sh`.
 
-## Client architecture
+## Обязательные UI routes
 
 ```text
-Razor component
-  -> feature API client
+/auth/login
+/auth/register
+/projects
+/projects/{id}
+/projects/{id}/edit
+/projects/{id}/tasks/new
+/tasks/{id}/edit
+/tags
+```
+
+Protected routes используют `[Authorize]`. Login/Register остаются anonymous.
+
+## UI architecture
+
+```text
+Razor page/component
+  -> AuthApiClient / ProjectsApiClient / TasksApiClient / TagsApiClient
      -> ApiHttpClient
         -> AntiforgeryHandler
            -> same-origin /api/v1/...
 ```
 
-Razor components не создают `HttpRequestMessage`, не управляют CSRF и не знают transport details.
+Razor files:
 
-## Browser session boundary
+- не создают `HttpClient`/`HttpRequestMessage`;
+- не содержат `/api/v1` URLs;
+- не читают auth cookie;
+- не хранят bearer/refresh token;
+- не используют `localStorage/sessionStorage` для authentication;
+- не используют `MarkupString`/`innerHTML` для user-controlled data.
 
-Authentication остаётся server-owned cookie session:
+## Authentication UI
 
-```text
-browser cookie (HttpOnly)
-  -> не читается WASM code
+Login/Register используют `AuthApiClient`. После успешной identity mutation Stage 12 boundary обновляет antiforgery token и `/auth/me` state.
 
-GET /api/v1/auth/me
-  -> ApiAuthenticationStateProvider
-  -> ClaimsPrincipal только в памяти client process
-```
-
-Client не хранит bearer/refresh tokens в `localStorage`/`sessionStorage`.
-
-## Antiforgery lifecycle
+Refresh страницы восстанавливает session через:
 
 ```text
-initial bootstrap
-  -> GET /api/v1/auth/antiforgery
-
-POST/PUT/PATCH/DELETE
-  -> AntiforgeryHandler
-  -> X-XSRF-TOKEN
-  -> request отправляется ровно один раз
-
-successful register/login
-  -> clear previous request token
-  -> fetch token bound to authenticated identity
-  -> refresh /auth/me
-
-successful logout
-  -> mark anonymous
-  -> clear old token
-  -> fetch anonymous token
-
-401 from API
-  -> mark anonymous
-  -> clear stale antiforgery token
+ClientBootstrapper
+-> GET /api/v1/auth/antiforgery
+-> GET /api/v1/auth/me
+-> AuthenticationStateProvider
 ```
 
-Safe `GET/HEAD/OPTIONS` запросы не требуют antiforgery header.
+Logout находится в `MainLayout` и также использует `AuthApiClient`.
 
-## Typed API clients
+## Projects
+
+`/projects`:
+
+- paged list;
+- create form;
+- loading/empty/error states.
+
+`/projects/{id}`:
+
+- project details;
+- edit link;
+- archive/restore;
+- delete confirmation;
+- task list + filters + sort + pagination;
+- create/edit/delete Task;
+- attach/detach Tag.
+
+Archived Project отображается read-only для Task/TaskTag mutations, что совпадает с Domain/Application invariant.
+
+## Tasks
+
+Поддержаны:
 
 ```text
-AuthApiClient
-ProjectsApiClient
-TasksApiClient
-TagsApiClient
+status: Todo / InProgress / Done
+priority: Low / Medium / High
+search text
+tag filter
+due after / due before
+sort
+pagination
 ```
 
-Все URL относительные и начинаются с `/api/v1/...`; environment-specific API hostname во frontend не зашивается.
+Due date из browser local datetime преобразуется в UTC `DateTimeOffset` перед API request и обратно в local datetime при редактировании.
 
-Mutating API clients не реализуют automatic retry. Это особенно важно для POST/PUT/DELETE: повтор пользовательской mutation должен быть явным UI-действием, а не скрытым transport retry.
+## Tags и Task↔Tag
 
-## Error contract
+`/tags` поддерживает create/edit/delete и pagination.
 
-`ApiProblemReader` читает RFC7807 response и сохраняет:
+На текущем API v1 нет отдельного read-endpoint `GET task/{id}/tags`. Поэтому Project UI не притворяется, что знает relation state: пользователь выбирает Tag и явно выполняет `Attach` или `Detach`. Оба backend operation уже идемпотентны.
+
+Для selector все Tags загружаются через `TagsApiClient.ListAllAsync()` страницами по 100, поэтому UI не обрезает список на первой странице.
+
+## Optimistic concurrency UX
+
+Любой typed `ApiProblemException` с version/concurrency conflict превращается в UI state:
 
 ```text
-status
-code
-title
-detail
-traceId
+409
+-> запись не перезаписывается
+-> показывается сообщение о concurrent change
+-> Reload latest
+-> повторная загрузка актуального Version/data
 ```
 
-`ApiProblemException` передаёт typed problem выше в UI. Для optimistic-concurrency `409` доступен `IsVersionConflict`, поэтому Stage 13 сможет показать reload-required UX без разбора текста ошибки.
+Project edit, Task edit, project actions, Task delete и Tag edit/delete используют server-issued `Version`.
+
+## Validation/error states
+
+Client-side DataAnnotations повторяют documented bounds:
+
+```text
+Project.Name       1..120
+Project.Description <= 2000
+Task.Title         1..200
+Task.Description   <= 4000
+Tag.Name           1..64
+Auth.UserName      1..64
+```
+
+Server RFC7807 errors остаются authoritative. Network/unexpected client failure показывает generic safe UI error без раскрытия internal details.
 
 ## Frontend tests
 
-Тесты Stage 12 проверяют:
+Executable xUnit tests проверяют:
+
+```text
+form validation
+version-conflict UI state
+due datetime UTC/local mapping
+```
+
+Stage 12 tests продолжают проверять:
 
 ```text
 ProblemDetails parsing
-auth state restored through /auth/me
-unsafe request receives X-XSRF-TOKEN
-safe request does not receive antiforgery header
-401 changes auth state to anonymous
-409 version conflict is surfaced as typed API problem
+/auth/me session restore
+antiforgery header rules
+401 -> anonymous
+409 typed conflict
 ```
 
-Дополнительный static verifier проверяет:
+`verify_client_ui_stage13.py` дополнительно проверяет route inventory, CRUD action wiring, filters/pagination, logout, conflict UI и security boundary Razor layer.
 
-```text
-Client has no server ProjectReference
-Client uses standalone Blazor WebAssembly SDK
-Razor components do not build HTTP requests
-no localStorage/sessionStorage auth token storage
-no bearer/refresh token contract
-all feature URLs are relative /api/v1/...
-unsafe requests are not auto-retried
-WASM/NuGet lock graph is pinned
-```
+## Запуск
 
-## Запуск клиента
-
-Для локального development frontend и API должны быть доступны через same-origin topology/reverse proxy, предусмотренную архитектурой. Сам WASM проект запускается:
+Frontend:
 
 ```bash
 dotnet run --project src/TaskFlow.Client/TaskFlow.Client.csproj
 ```
 
-Полный production proxy/container topology добавляется на Stages 14+; Stage 12 намеренно не внедряет environment-specific backend hostname в Client.
+Для полного локального приложения нужен same-origin reverse-proxy/container topology, который добавляется на Stage 14.
 
-## Полная проверка Stage 12
+## Полная проверка Stage 13
 
 ```bash
-./scripts/verify-stage12.sh
+./scripts/verify-stage13.sh
 ```
 
-Скрипт запускает static architecture checks Stages 0–12, затем:
+Скрипт запускает static architecture checks Stages 0–13, затем:
 
 ```bash
 dotnet restore TaskFlow.sln --locked-mode
@@ -154,12 +197,12 @@ dotnet test TaskFlow.sln --no-build --no-restore --configuration Release
 
 ## Документы
 
-Подробное объяснение Stage 12:
+Подробное объяснение решений:
 
 ```text
-docs/STAGE_12_RATIONALE.md
+docs/STAGE_13_RATIONALE.md
 ```
 
 ## Следующий этап
 
-Stage 13 — Blazor UI: страницы auth/projects/tasks/tags, forms, loading/error states, conflict UX и основной пользовательский CRUD flow поверх уже единой client API boundary.
+Stage 14 — Docker и локальный production-like запуск: отдельные API/frontend/migrator images, PostgreSQL, reverse proxy, one-shot migrations и same-origin topology.
