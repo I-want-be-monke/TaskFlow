@@ -1,0 +1,153 @@
+name: TaskFlow CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: taskflow-ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  DOTNET_NOLOGO: "true"
+  DOTNET_CLI_TELEMETRY_OPTOUT: "1"
+  NUGET_XMLDOC_MODE: skip
+
+jobs:
+  quality:
+    name: Build, analyzers, unit and architecture
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Setup .NET from global.json
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6
+        with:
+          global-json-file: global.json
+          cache: true
+          cache-dependency-path: '**/packages.lock.json'
+
+      - name: Install static verifier dependency
+        run: python3 -m pip install --disable-pip-version-check 'PyYAML==6.0.3'
+
+      - name: Restore locked dependency graph
+        run: dotnet restore TaskFlow.sln --locked-mode
+
+      - name: Build Release with analyzers
+        run: dotnet build TaskFlow.sln --no-restore --configuration Release
+
+      - name: Architecture and stage guards
+        run: ./scripts/verify-static-stage15.sh
+
+      - name: Domain unit tests
+        run: dotnet test tests/TaskFlow.Domain.Tests/TaskFlow.Domain.Tests.csproj --no-build --no-restore --configuration Release
+
+      - name: Application unit tests
+        run: dotnet test tests/TaskFlow.Application.Tests/TaskFlow.Application.Tests.csproj --no-build --no-restore --configuration Release
+
+  integration_p0:
+    name: PostgreSQL integration + P0 security/concurrency/migration
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Setup .NET from global.json
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6
+        with:
+          global-json-file: global.json
+          cache: true
+          cache-dependency-path: '**/packages.lock.json'
+
+      - name: Restore locked dependency graph
+        run: dotnet restore TaskFlow.sln --locked-mode
+
+      - name: Build Release
+        run: dotnet build TaskFlow.sln --no-restore --configuration Release
+
+      - name: Run full PostgreSQL integration suite
+        run: dotnet test tests/TaskFlow.IntegrationTests/TaskFlow.IntegrationTests.csproj --no-build --no-restore --configuration Release
+
+  supply_chain:
+    name: Dependency and secret scanning
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Checkout full Git history
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Setup .NET from global.json
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6
+        with:
+          global-json-file: global.json
+          cache: true
+          cache-dependency-path: '**/packages.lock.json'
+
+      - name: Restore locked dependency graph
+        run: dotnet restore TaskFlow.sln --locked-mode
+
+      - name: NuGet vulnerability gate
+        run: python3 scripts/check_nuget_vulnerabilities.py
+
+      - name: Secret scan including Git history
+        run: ./scripts/scan-secrets.sh
+
+      - name: Upload supply-chain reports
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: supply-chain-reports
+          path: artifacts/
+          if-no-files-found: ignore
+          retention-days: 14
+
+  containers:
+    name: Container build, scan, smoke and E2E
+    needs: [quality, integration_p0, supply_chain]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Build production-like stack
+        run: ./scripts/compose-up.sh
+
+      - name: Container vulnerability gate
+        run: ./scripts/scan-containers.sh
+
+      - name: Container state/session smoke
+        run: ./scripts/compose-smoke.sh
+
+      - name: End-to-end same-origin frontend smoke
+        run: python3 scripts/ci_e2e_smoke.py
+
+      - name: Collect compose diagnostics on failure
+        if: failure()
+        run: docker compose --env-file .env.compose.local logs --no-color > artifacts/docker-compose.log || true
+
+      - name: Upload container scan and diagnostics
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: container-reports
+          path: artifacts/
+          if-no-files-found: ignore
+          retention-days: 14
+
+      - name: Tear down stack
+        if: always()
+        run: ./scripts/compose-down.sh || true
