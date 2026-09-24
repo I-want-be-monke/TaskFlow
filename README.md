@@ -1,209 +1,250 @@
-# TaskFlow — Stage 8
+# TaskFlow — Stage 9
 
-TaskFlow реализуется по архитектурным этапам. **Stages 0–8 завершены в этом snapshot**: repository/build foundation, Domain, Application Core, все v1 use cases, PostgreSQL/EF Core persistence/concurrency, HTTP API и теперь полноценная browser-session security pipeline.
+TaskFlow реализуется по архитектурным этапам. **Stages 0–9 завершены в этом snapshot**: repository/build foundation, чистый Domain/Application, PostgreSQL persistence/concurrency, HTTP API, browser-session security и production hardening baseline.
 
-## Что готово
+## Кратко: что добавлено на Stage 9
 
-- pinned .NET **10.0.401** / C# 14 build contract;
-- locked NuGet restore и architecture boundaries;
-- Domain/Application из Stages 1–4;
-- PostgreSQL schema, migration, repositories, queries, transactions и concurrency из Stages 5–6;
-- HTTP API `/api/v1` из Stage 7;
-- ASP.NET Core Identity поверх существующего `TaskFlowDbContext`;
-- same-origin authentication cookie `__Host-TaskFlow.Auth`;
-- `HttpOnly = true`, `Secure = Always`, `SameSite = Strict`, `Path = /`;
-- finite authentication ticket lifetime: 8 hours, sliding expiration enabled;
-- `Remember me` отсутствует в v1: `SignInAsync(..., isPersistent: false)`;
-- Identity password hashing; custom password hash/salt отсутствует;
-- lockout включён: 5 неудачных попыток -> 15 минут блокировки; login использует `lockoutOnFailure: true`;
-- generic `auth.invalid_credentials` для неверного login и lockout/non-success result;
-- shared ASP.NET Core Data Protection key ring в PostgreSQL (`data_protection_keys`);
-- единый Data Protection application name `TaskFlow` для всех replicas;
-- fallback authorization policy `RequireAuthenticatedUser`;
-- anonymous только `auth/antiforgery`, `auth/register`, `auth/login` на текущем этапе;
-- `register`, `login`, `logout`, `me`;
-- ASP.NET Core Antiforgery с request header `X-XSRF-TOKEN`;
-- antiforgery cookie `__Host-TaskFlow.Antiforgery`, `HttpOnly + Secure + SameSite=Strict`;
-- все non-GET/HEAD/OPTIONS requests проверяются единым `ApiAntiforgeryFilter`;
-- CSRF failure возвращается как RFC7807 `application/problem+json`;
-- antiforgery token требуется обновлять после register/login/logout auth-state change;
-- BOLA semantics остаются owner-scoped: чужие Project/Task/Tag/TaskTag операции дают `404`;
-- HTTP security integration tests используют `WebApplicationFactory` + реальный PostgreSQL Testcontainer;
-- multi-replica tests проверяют auth cookie и antiforgery через общий PostgreSQL key ring;
-- Git history Stages 0–8 сохраняется в `.git`.
+- typed Options: `SecurityOptions`, `CorsOptions`, `ProxyOptions`, `ObservabilityOptions`, `RequestLimitOptions`;
+- дополнительный `AuthOptions`, потому что `Auth__AllowRegistration` уже был частью configuration contract, но Stage 8 его не применял;
+- `ValidateDataAnnotations()`, custom `Validate(...)` и `ValidateOnStart()`;
+- Kestrel + middleware request body limit;
+- global request timeout через ASP.NET Core RequestTimeouts;
+- bounded pagination остаётся `PageSize <= 100` на Application boundary;
+- global rate limiting: authenticated user -> user partition, anonymous -> trusted remote IP partition;
+- отдельный строгий limiter для `register/login`;
+- trusted `X-Forwarded-For` / `X-Forwarded-Proto` только от configured `KnownProxies`/`KnownIPNetworks`;
+- в .NET 10 используется `System.Net.IPNetwork`, не obsolete `KnownNetworks`;
+- CORS включается только в Development и только по exact origin allowlist;
+- security-header contract для reverse proxy/edge;
+- `GET /health/live` без PostgreSQL dependency;
+- `GET /health/ready` с PostgreSQL connectivity check;
+- API startup по-прежнему не выполняет migrations;
+- Stage 8 security implementation повторно проверена и усилена конфигурируемым `AllowRegistration`.
 
-## Auth/session API
+## Stage 8 audit
+
+Повторно проверены:
 
 ```text
-GET  /api/v1/auth/antiforgery   anonymous
-POST /api/v1/auth/register      anonymous + CSRF
-POST /api/v1/auth/login         anonymous + CSRF
-POST /api/v1/auth/logout        authenticated + CSRF
-GET  /api/v1/auth/me            authenticated
+Identity password hashing
+HttpOnly + Secure + SameSite=Strict __Host- auth cookie
+finite cookie lifetime / non-persistent sign-in
+shared PostgreSQL Data Protection key ring
+fallback RequireAuthenticatedUser
+register/login/logout/me
+lockout + generic auth.invalid_credentials
+CSRF for POST/PUT/PATCH/DELETE
+safe GET/HEAD/OPTIONS
+owner-scoped BOLA -> 404
+cross-replica cookie/antiforgery contract
+no bearer/JWT/browser-storage auth path
 ```
 
-### Browser flow
+Нового bypass не найдено. Один реальный недочёт Stage 8 исправлен: `.env.example` уже содержал `Auth__AllowRegistration`, но endpoint регистрации его не учитывал. Теперь при `false` registration возвращает RFC7807 `403 auth.registration_disabled`.
 
-Перед первым unsafe request:
+## Configuration contract
+
+Основные environment keys:
 
 ```text
-GET /api/v1/auth/antiforgery
--> JSON { token }
--> сервер также устанавливает HttpOnly antiforgery cookie
+ConnectionStrings__Postgres
+
+Auth__AllowRegistration
+
+Security__RateLimit__ApiPermitLimit
+Security__RateLimit__LoginPermitLimit
+Security__RateLimit__WindowSeconds
+Security__RequestTimeoutSeconds
+Security__MaxRequestBodyBytes
+
+Cors__AllowedOrigins__0
+
+Proxy__ForwardLimit
+Proxy__KnownProxies__0
+Proxy__KnownNetworks__0
+
+Observability__ServiceVersion
+Observability__SlowDbThresholdMs
 ```
 
-Клиент отправляет request token только в памяти вкладки:
+Все Stage 9 options проходят fail-fast validation при startup.
+
+## Request limits
+
+Default baseline из `.env.example`:
 
 ```text
-X-XSRF-TOKEN: <token>
+Max request body = 1 MiB
+Request timeout  = 30 seconds
+PageSize         <= 100
 ```
 
-После успешного register/login:
+Oversized request с известным `Content-Length` получает:
 
 ```text
-auth state changed
--> старый request token больше не используется
--> GET /api/v1/auth/antiforgery
--> сохранить новый request token только в памяти
+413
+application/problem+json
+code = http.request_too_large
 ```
 
-После logout:
+Kestrel также получает тот же `MaxRequestBodySize`, поэтому production server ограничивает body до чтения дорогостоящего payload.
+
+Timeout policy возвращает:
 
 ```text
-clear old request token
--> GET /api/v1/auth/antiforgery
--> получить новый anonymous request token
+503
+code = http.request_timeout
 ```
 
-## Authentication cookie
+и отменяет `HttpContext.RequestAborted`, позволяя handlers/repositories корректно распространить cancellation.
+
+## Rate limiting
+
+Global limiter:
 
 ```text
-Name       = __Host-TaskFlow.Auth
-HttpOnly   = true
-Secure     = Always
-SameSite   = Strict
-Path       = /
-Ticket TTL = 8 hours
-Sliding    = true
-Persistent = false for register/login
+authenticated request -> partition user:<user-id>
+anonymous request     -> partition ip:<trusted remote ip>
 ```
 
-Browser JavaScript не читает auth cookie. Состояние пользователя определяется через:
+Strict auth limiter дополнительно применяется к:
 
 ```text
-GET /api/v1/auth/me
-```
-
-## CSRF contract
-
-Safe methods:
-
-```text
-GET
-HEAD
-OPTIONS
-```
-
-Все остальные методы, включая используемые приложением:
-
-```text
-POST
-PUT
-PATCH
-DELETE
-```
-
-проходят `IAntiforgery.ValidateRequestAsync`.
-
-При ошибке:
-
-```json
-{
-  "type": "about:blank",
-  "title": "Bad Request",
-  "status": 400,
-  "detail": "A valid antiforgery token is required for this request.",
-  "code": "security.csrf_validation_failed",
-  "traceId": "..."
-}
-```
-
-## Authorization
-
-Глобальная fallback policy:
-
-```text
-RequireAuthenticatedUser
-```
-
-Контроллеры Projects/Tasks/Tags не нужно помечать `[Authorize]` по отдельности: deny-by-default применяется ко всем endpoint без `[AllowAnonymous]`.
-
-На Stage 8 `[AllowAnonymous]` используется только для:
-
-```text
-GET  /api/v1/auth/antiforgery
 POST /api/v1/auth/register
 POST /api/v1/auth/login
 ```
 
-`logout` и `me`, как и весь business API, защищены fallback policy.
-
-## Data Protection / multi-replica
-
-Data Protection key ring хранится в общей PostgreSQL таблице:
+Baseline:
 
 ```text
-data_protection_keys
+API permits    = 100 / 60 sec
+Auth permits   = 10 / 60 sec
+QueueLimit     = 0
 ```
 
-и использует:
+При превышении:
 
 ```text
-SetApplicationName("TaskFlow")
+429
+application/problem+json
+code = http.rate_limit_exceeded
+Retry-After = <если limiter предоставил metadata>
 ```
 
-Поэтому replica B может расшифровать auth cookie и antiforgery token, выпущенные replica A. Sticky sessions для correctness не нужны.
+Identity lockout остаётся отдельной второй линией защиты login.
 
-## Security integration tests
+## Trusted proxy contract
 
-Stage 8 добавляет проверки:
+Forwarded headers **не обрабатываются вообще**, если не задан ни один trusted proxy/network.
+
+Когда allowlist задан:
 
 ```text
-anonymous business endpoint -> RFC7807 `401`
-register/login/logout/me
-cookie security attributes
-POST without CSRF -> RFC7807 400
-GET without CSRF -> allowed when authenticated
-POST/PUT/DELETE without CSRF -> rejected
-antiforgery refresh after auth-state change
-generic invalid-credentials response
-failed password increments Identity AccessFailedCount
-foreign Project -> 404
-foreign Task -> 404
-foreign Tag -> 404
-foreign TaskTag relation -> 404
-cookie issued by replica A works on replica B
-antiforgery issued by replica A works on replica B
+X-Forwarded-For
+X-Forwarded-Proto
 ```
 
-## Configuration
+принимаются только от `Proxy__KnownProxies` / `Proxy__KnownNetworks`, `ForwardLimit` bounded, header symmetry включена.
 
-На Stage 8 API по-прежнему требует:
+Это важно, потому что anonymous rate-limit partition использует уже нормализованный `RemoteIpAddress`, а не напрямую клиентский header.
+
+## CORS
+
+Production deployment — same-origin, поэтому CORS middleware там не включается.
+
+Только `Development` может включить policy из:
 
 ```text
-ConnectionStrings__Postgres
+Cors__AllowedOrigins__N
 ```
 
-Пример:
+Origins валидируются как точные HTTP(S) origins. Wildcard `*`, path/query/fragment и trailing slash запрещены. `AllowAnyOrigin + credentials` отсутствует.
 
-```bash
-export ConnectionStrings__Postgres='Host=localhost;Port=5432;Database=taskflow;Username=taskflow_app;Password=change-me'
-dotnet run --project src/TaskFlow.Api
+## Health checks
+
+```text
+GET /health/live
+GET /health/ready
 ```
 
-Typed Options, rate limiting, request limits, trusted proxies и health checks добавляются на Stage 9.
+`/health/live`:
 
-## Проверка Stage 8
+```text
+AllowAnonymous
+не проверяет PostgreSQL
+показывает, что process/HTTP pipeline жив
+```
+
+`/health/ready`:
+
+```text
+остается под fallback authorization
+проверяет TaskFlowDbContext.Database.CanConnectAsync
+Healthy -> replica может принимать traffic
+Unhealthy -> replica не готова
+```
+
+Это сохраняет архитектурный default-deny contract, где anonymous health exception указан только для `/health/live`.
+
+Оба health endpoints исключены из rate limiting, чтобы probe traffic сам не делал replica unhealthy.
+
+## Reverse-proxy security headers
+
+Stage 9 добавляет edge contract:
+
+```text
+deploy/reverse-proxy/security-headers.conf
+```
+
+Он фиксирует минимум:
+
+```text
+Content-Security-Policy
+X-Content-Type-Options: nosniff
+Referrer-Policy
+Permissions-Policy
+frame-ancestors 'none'
+```
+
+TLS/security headers остаются обязанностью ingress/reverse proxy, как требует архитектура.
+
+## Middleware baseline
+
+```text
+ForwardedHeaders
+-> ExceptionHandler / ProblemDetails
+-> Routing
+-> Request body limit
+-> RequestTimeouts
+-> CORS (Development only)
+-> Authentication
+-> RateLimiter
+-> Authorization
+-> MVC antiforgery filter for unsafe requests
+-> Controllers
+```
+
+## Tests Stage 9
+
+Добавлены/расширены проверки:
+
+```text
+invalid DataAnnotation Options -> startup failure
+invalid custom CORS Options -> startup failure
+request body too large -> 413
+strict auth limiter -> 429
+request timeout config binding
+live works with unavailable PostgreSQL
+readiness checker becomes Unhealthy with unavailable PostgreSQL
+anonymous /health/ready rejected by fallback auth
+forwarded headers accepted only from allowlisted proxy
+Auth__AllowRegistration=false blocks register
+API startup still contains no Migrate/EnsureCreated
+```
+
+PostgreSQL/Testcontainers security/concurrency tests Stages 5–8 остаются частью полного suite.
+
+## Полная проверка
 
 Нужны:
 
@@ -212,57 +253,22 @@ Typed Options, rate limiting, request limits, trusted proxies и health checks �
 Docker Engine / Docker Desktop
 ```
 
-Из корня репозитория:
+Из корня:
 
 ```bash
-./scripts/verify-stage8.sh
+./scripts/verify-stage9.sh
 ```
 
 Скрипт выполняет:
 
 ```text
-Stage 0–8 source/architecture checks
--> dotnet restore TaskFlow.sln --locked-mode
+Stages 0–9 source/architecture verification
+-> dotnet restore --locked-mode
 -> Release build
--> Docker availability check
--> unit tests
--> PostgreSQL/Testcontainers persistence/concurrency/API/security tests
+-> Docker availability
+-> полный test suite
 ```
 
-Основные команды отдельно:
+В текущем artifact-контейнере `dotnet` и Docker отсутствуют, поэтому snapshot **не утверждает**, что runtime build/Testcontainers были выполнены здесь. Доступные static checks, JSON/XML validation, Git integrity и archive integrity выполняются перед упаковкой.
 
-```bash
-python3 scripts/verify_project_references.py
-python3 scripts/verify_application_contracts.py
-python3 scripts/verify_project_features.py
-python3 scripts/verify_task_tag_features.py
-python3 scripts/verify_infrastructure_stage5.py
-python3 scripts/verify_infrastructure_stage6.py
-python3 scripts/verify_api_stage7.py
-python3 scripts/verify_security_stage8.py
-
-dotnet restore TaskFlow.sln --locked-mode
-dotnet build TaskFlow.sln --no-restore --configuration Release
-docker info
-dotnet test TaskFlow.sln --no-build --no-restore --configuration Release
-```
-
-## Что остаётся на Stage 9
-
-Следующий этап добавляет production hardening:
-
-- typed Options + `ValidateOnStart`;
-- request body limits;
-- request timeouts;
-- rate limiting;
-- trusted proxy configuration;
-- dev-only exact CORS allowlist при необходимости;
-- `/health/live` и `/health/ready`;
-- проверку, что API startup не выполняет migrations;
-- дополнительные security headers на reverse proxy/edge contract.
-
-## Статус проверки этого архива
-
-При создании snapshot выполняются все доступные Python/source architecture checks, XML/JSON checks, NuGet lock-graph checks, `git diff --check`, `git fsck` и archive integrity checks. В текущем artifact-контейнере отсутствуют `dotnet` и Docker, поэтому README **не утверждает**, что runtime `dotnet restore/build/test` или Testcontainers suite были запущены внутри него.
-
-Подробные решения: [`docs/STAGE_8_RATIONALE.md`](docs/STAGE_8_RATIONALE.md).
+Подробное объяснение решений: [`docs/STAGE_9_RATIONALE.md`](docs/STAGE_9_RATIONALE.md).
