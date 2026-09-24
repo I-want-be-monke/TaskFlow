@@ -1,310 +1,146 @@
-# TaskFlow — Stage 10
+# TaskFlow — Stage 11
 
-TaskFlow реализуется по архитектурным этапам. **Stages 0–10 завершены в этом snapshot**: repository/build foundation, Domain/Application, PostgreSQL persistence/concurrency, HTTP API, browser-session security, production hardening и structured observability.
+TaskFlow реализуется по архитектурным этапам. **Stages 0–11 завершены в этом snapshot**: repository/build foundation, Domain/Application, PostgreSQL persistence/concurrency, REST API, browser-session security, production hardening, structured observability и отдельный one-shot DbMigrator.
 
-## Кратко: что добавлено на Stage 10
+## Что добавлено на Stage 11
 
-- единый structured JSON console formatter для API и DbMigrator;
-- `one event = one JSON line`, только stdout/stderr, без file sink;
-- стабильная log schema с release/environment/instance metadata;
-- W3C `trace_id` / `span_id` + `request_id` correlation;
-- стабильный `TaskFlowLogEvents` catalog и диапазоны EventId;
-- один `RequestCompleted` event на HTTP request;
-- один основной `UnhandledException` Error event на API boundary;
-- security events для login/lockout/logout/authz/CSRF/rate-limit/config failures;
-- slow PostgreSQL operation logging без SQL text/parameter values;
-- application-significant events для Project/Task/Tag;
-- explicit suppression framework request/exception duplication и noisy EF command logs;
-- allowlist structured fields + sensitive-message redaction;
-- `Observability__InstanceId` для replica/process identity;
-- logging contract tests и `scripts/verify-stage10.sh`.
+- полноценный executable `TaskFlow.DbMigrator`;
+- тот же `TaskFlowDbContext` и тот же migrations assembly, что использует Infrastructure;
+- `ConnectionStrings__Postgres` как единый config key;
+- отдельная production роль `taskflow_migrator` вместо runtime `taskflow_app`;
+- PostgreSQL session advisory lock с фиксированным TaskFlow key;
+- bounded lock wait через `Migrator__LockTimeoutSeconds`;
+- `Database.MigrateAsync()` только в admin process;
+- стабильные exit codes `0/2/3/4/130`;
+- structured `MigrationStarted/MigrationCompleted/MigrationFailed` по Stage 10 JSON schema;
+- PostgreSQL least-privilege template;
+- integration tests для empty DB, concurrent migrator, failure exit и DDL privilege separation;
+- `scripts/verify-stage11.sh`.
 
-## Production log schema
-
-Каждая строка — отдельный JSON object. Базовые поля:
+## Production process boundary
 
 ```text
-schema_version
-@timestamp
-log_level
-event_id
-event_name
-message
-service_name
-service_version
-deployment_environment
-instance_id
-trace_id
-span_id
-request_id
+web-api
+  ConnectionStrings__Postgres -> taskflow_app
+  runtime DML
+  NO schema migrations
+
+admin-migrate
+  ConnectionStrings__Postgres -> taskflow_migrator
+  one-shot Database.MigrateAsync()
+  exit 0 only after successful migration
 ```
 
-Опционально, только когда применимо:
+Оба процесса получают configuration извне. Passwords не находятся в repository/image.
+
+## Advisory lock
+
+Migrator выполняет:
 
 ```text
-user_id
-http_method
-http_route
-http_status_code
-duration_ms
-error_type
-security_event_id
-outcome
-reason_code
-client_ip
-db_operation
-application_event_id
-project_id / task_id / tag_id
-process_type / operation_id
+open PostgreSQL connection
+-> pg_try_advisory_lock(TaskFlow key)
+-> bounded retry
+-> Database.MigrateAsync()
+-> pg_advisory_unlock(TaskFlow key)
+-> exit
 ```
 
-`http_route` — route template, например `/api/v1/tasks/{taskId:guid}`, а не raw URL. Query string не входит в log contract.
-
-## EventId catalog
+По умолчанию:
 
 ```text
-1000-1999  HTTP / API lifecycle
-2000-2999  Application-significant events
-3000-3999  Persistence / PostgreSQL
-4000-4999  Authentication / Authorization / Security
-5000-5999  Admin / Migration / Startup
-6000-6999  Future external adapters
+Migrator__LockTimeoutSeconds=30
 ```
 
-Текущий стабильный минимум:
+Если другой deployment удерживает lock дольше лимита, второй migrator возвращает exit code `3`, и rollout не должен продолжаться.
+
+## Exit codes
 
 ```text
-1001 RequestCompleted
-1002 RequestRejected
-1003 UnhandledException
+0    success
+2    invalid/missing configuration
+3    migration advisory-lock timeout
+4    migration/database failure
+130  cancellation
+```
 
-2001 ProjectCreated
-2002 ProjectArchived
-2101 TaskCreated
-2102 TaskUpdated
-2201 TagCreated
+## Local migration run
 
-3001 DatabaseUnavailable
-3002 SlowDatabaseOperation
-3003 ConcurrencyConflict
+Используйте отдельную privileged local role/connection string для migrator:
 
-4001 LoginSucceeded
-4002 LoginFailed
-4003 AccountLockedOut
-4004 Logout
-4010 AuthorizationDenied
-4011 CsrfValidationFailed
-4012 RateLimitRejected
-4013 SecurityConfigurationError
+```bash
+export ConnectionStrings__Postgres='Host=localhost;Port=5432;Database=taskflow;Username=taskflow_migrator;Password=LOCAL_SECRET'
+export Migrator__LockTimeoutSeconds=30
+export Observability__ServiceVersion=local
 
+dotnet run --project src/TaskFlow.DbMigrator/TaskFlow.DbMigrator.csproj
+```
+
+Для API передаётся тот же config key, но другой credential:
+
+```text
+Username=taskflow_app
+```
+
+`deploy/postgres/least-privilege.sql` показывает grants/default privileges. Role passwords в этот файл намеренно не входят.
+
+## Migration logging
+
+DbMigrator использует общий Stage 10 JSON formatter и stdout/stderr:
+
+```text
 5001 ApplicationStarted
-5002 ApplicationStopping
-5003 ApplicationStopped
 5101 MigrationStarted
 5102 MigrationCompleted
 5103 MigrationFailed
+5002 ApplicationStopping
+5003 ApplicationStopped
 ```
 
-`event_id` и `event_name` считаются контрактом; текст `message` может меняться без поломки dashboards/alerts.
+Migration scope содержит `operation_id`, `release_id`, `process_type=db-migrator`; connection string и credentials не логируются.
 
-## Request correlation
+## Integration contract
 
-ASP.NET Core создаёт W3C `Activity` для входящего HTTP request. Formatter автоматически пишет:
+PostgreSQL/Testcontainers tests проверяют:
 
 ```text
-trace_id
-span_id
+empty DB -> migration success
+second migrator + held advisory lock -> bounded exit 3
+invalid DB credential -> non-zero exit
+API role CREATE TABLE -> 42501 insufficient_privilege
+migrator role -> required DDL succeeds
+migration EventId/EventName stay stable
 ```
 
-`RequestLoggingMiddleware` добавляет scope с:
+API startup по-прежнему не содержит `Migrate`, `MigrateAsync` или `EnsureCreated`.
 
-```text
-request_id
-http_method
-```
-
-и после завершения request пишет один `RequestCompleted` с route template, status, duration и `user_id`, если authenticated actor известен.
-
-Успешные `/health/live` и `/health/ready` логируются только на `Debug`, чтобы probes не создавали Information-шум; failure остаётся видимым.
-
-## Exception policy
-
-Unexpected request exception логируется централизованно в `GlobalExceptionHandler`:
-
-```text
-1003 UnhandledException
-level = Error
-error_type
-trace_id / request_id
-safe route template
-stack trace
-```
-
-ASP.NET Core framework-category `ExceptionHandlerMiddleware` отключён от console stream, поэтому тот же exception не дублируется вторым Error event.
-
-`RequestCompleted` для HTTP 500 остаётся `Warning`, а не вторым `Error`.
-
-Exception message намеренно не сериализуется formatter'ом. Клиент продолжает получать безопасный RFC7807 без stack trace.
-
-## Sensitive-data policy
-
-Structured fields принимаются formatter'ом по allowlist. Не являются частью log contract:
-
-```text
-request/response body
-query string
-Authorization
-Cookie / Set-Cookie
-antiforgery token
-password / password hash
-Data Protection keys
-connection string / DB password
-secret environment values
-raw files
-```
-
-Дополнительная message-redaction блокирует сообщения, похожие на credentials/cookie/connection-string data.
-
-EF Core остаётся с:
-
-```csharp
-EnableSensitiveDataLogging(false)
-```
-
-и category `Microsoft.EntityFrameworkCore.Database.Command` ограничена `Warning+`, поэтому обычный SQL stream не пишется на Information.
-
-## Security events
-
-Security logging использует только server-known/safe context:
-
-```text
-security_event_id
-event_name
-trace_id
-request_id
-user_id?          # только UUID
-client_ip?        # после trusted proxy processing
-http_route
-outcome
-reason_code
-```
-
-Login failure не логирует username/password. CSRF event не логирует token. Rate-limit event не доверяет raw `X-Forwarded-For`: используется уже нормализованный `RemoteIpAddress` после Stage 9 trusted-proxy middleware.
-
-## Database observability
-
-`SlowDatabaseCommandInterceptor` получает threshold из:
-
-```text
-Observability__SlowDbThresholdMs
-```
-
-и пишет `3002 SlowDatabaseOperation` только с:
-
-```text
-db_operation
-duration_ms
-trace_id
-```
-
-Он намеренно не читает `CommandText`, parameters или bind values.
-
-`UnitOfWork` пишет typed persistence outcomes:
-
-```text
-3003 ConcurrencyConflict  -> Warning, ожидаемый optimistic conflict
-3001 DatabaseUnavailable -> Error, dependency failure преобразован в typed Result
-```
-
-Поскольку эти exceptions поглощаются/преобразуются persistence boundary, лог здесь не дублирует rethrow на API boundary.
-
-## Application-significant events
-
-Не логируется вход/выход каждого handler. Добавлен только небольшой стабильный набор значимых success events:
-
-```text
-ProjectCreated
-ProjectArchived
-TaskCreated
-TaskUpdated
-TagCreated
-```
-
-В события попадают только внутренние UUID, не user-entered names/descriptions.
-
-## API и DbMigrator используют один формат
-
-Shared implementation находится в:
-
-```text
-src/TaskFlow.Infrastructure/Observability/
-```
-
-`TaskFlow.Api` запускает formatter как `service_name = TaskFlow.Api`.
-
-`TaskFlow.DbMigrator` уже переведён с `Console.WriteLine` на тот же formatter с `service_name = TaskFlow.DbMigrator` и `operation_id`. Сами migration execution events `5101-5103` будут использованы при реализации migration process на Stage 11.
-
-Никаких local log files, rotation или synchronous remote log sink в приложении нет.
-
-## Configuration
-
-Stage 10 observability keys:
-
-```text
-Observability__ServiceVersion=dev
-Observability__InstanceId=taskflow-api-local
-Observability__SlowDbThresholdMs=500
-```
-
-`ServiceVersion` должен быть immutable release id/commit SHA в deployment. `InstanceId` обычно задаётся pod/container environment; если он не указан, formatter использует `TASKFLOW_INSTANCE_ID`, затем `HOSTNAME`, затем process-local fallback.
-
-## Tests Stage 10
-
-Добавлены проверки:
-
-```text
-one JSON event per line
-required fields stable
-trace/span/request correlation fields
-EventId/EventName catalog stable
-RequestCompleted emitted once
-HTTP 500 completion is not second Error event
-one explicit unexpected-exception Error event at API boundary
-password absent
-cookie absent
-antiforgery token absent
-connection string absent
-exception message not serialized
-DbMigrator uses same formatter
-slow DB logger does not inspect SQL/parameters
-no file sink / sensitive EF logging
-```
-
-## Полная проверка
-
-Нужны:
-
-```text
-.NET SDK 10.0.401
-Docker Engine / Docker Desktop
-```
-
-Из корня:
+## Полная проверка Stage 11
 
 ```bash
-./scripts/verify-stage10.sh
+./scripts/verify-stage11.sh
 ```
 
-Скрипт выполняет:
+Скрипт запускает static architecture checks Stages 0–11, затем:
+
+```bash
+dotnet restore TaskFlow.sln --locked-mode
+dotnet build TaskFlow.sln --no-restore --configuration Release
+docker info
+dotnet test TaskFlow.sln --no-build --no-restore --configuration Release
+```
+
+Для runtime части требуются .NET SDK `10.0.401` и Docker.
+
+## Документы
+
+Краткий рабочий контракт находится в этом `README.md`.
+
+Подробное объяснение решений Stage 11 находится в:
 
 ```text
-Stages 0–10 source/architecture verification
--> dotnet restore --locked-mode
--> Release build
--> Docker availability
--> полный test suite
+docs/STAGE_11_RATIONALE.md
 ```
 
-В текущем artifact-контейнере `dotnet` и Docker отсутствуют. Поэтому snapshot не утверждает, что runtime build/Testcontainers были выполнены здесь. Все доступные static checks Stages 0–10 проходят перед упаковкой.
+## Следующий этап
 
-Подробное объяснение решений: [`docs/STAGE_10_RATIONALE.md`](docs/STAGE_10_RATIONALE.md).
+Stage 12 — Blazor Client foundation: настоящий standalone WASM client, typed API client, cookie/antiforgery boundary и session restoration через `/api/v1/auth/me`.
