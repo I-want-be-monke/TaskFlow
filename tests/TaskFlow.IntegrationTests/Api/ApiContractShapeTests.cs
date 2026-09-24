@@ -1,6 +1,7 @@
 using System.Reflection;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Routing;
+using TaskFlow.Api.Contracts.Auth;
 using TaskFlow.Api.Contracts.Projects;
 using TaskFlow.Api.Contracts.Tags;
 using TaskFlow.Api.Contracts.Tasks;
@@ -16,6 +17,8 @@ public sealed class ApiContractShapeTests
     {
         Type[] requestTypes =
         [
+            typeof(RegisterRequest),
+            typeof(LoginRequest),
             typeof(CreateProjectRequest),
             typeof(UpdateProjectRequest),
             typeof(CreateTaskRequest),
@@ -41,6 +44,10 @@ public sealed class ApiContractShapeTests
     {
         Type[] contractTypes =
         [
+            typeof(AuthUserResponse),
+            typeof(AntiforgeryResponse),
+            typeof(RegisterRequest),
+            typeof(LoginRequest),
             typeof(ProjectResponse),
             typeof(TaskResponse),
             typeof(TagResponse),
@@ -66,7 +73,7 @@ public sealed class ApiContractShapeTests
     [Fact]
     public void Controllers_DoNotInjectDbContext()
     {
-        Type[] controllerTypes = [typeof(ProjectsController), typeof(TasksController), typeof(TagsController)];
+        Type[] controllerTypes = [typeof(AuthController), typeof(ProjectsController), typeof(TasksController), typeof(TagsController)];
 
         foreach (Type controllerType in controllerTypes)
         {
@@ -80,7 +87,7 @@ public sealed class ApiContractShapeTests
     [Fact]
     public void ControllerResponseContracts_DoNotReturnDomainEntities()
     {
-        Type[] controllerTypes = [typeof(ProjectsController), typeof(TasksController), typeof(TagsController)];
+        Type[] controllerTypes = [typeof(AuthController), typeof(ProjectsController), typeof(TasksController), typeof(TagsController)];
 
         foreach (MethodInfo method in controllerTypes.SelectMany(type => type.GetMethods(BindingFlags.Instance | BindingFlags.Public)))
         {

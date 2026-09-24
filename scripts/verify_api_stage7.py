@@ -18,7 +18,7 @@ program = read(API / "Program.cs")
 for token in [
     "AddProblemDetails()",
     "AddExceptionHandler<GlobalExceptionHandler>()",
-    "AddControllers()",
+    "AddControllers(",
     "UseNpgsql(postgresConnectionString)",
     "UseExceptionHandler()",
     "MapControllers()",
@@ -31,8 +31,8 @@ for token in [
 ]:
     require(token in program, f"Program.cs missing composition-root token: {token}")
 
-for forbidden in ["Database.Migrate", "MigrateAsync(", "EnsureCreated", "AddAuthentication(", "UseAuthentication("]:
-    require(forbidden not in program, f"Stage 7 must not contain {forbidden}; migrations/authentication are separate stages")
+for forbidden in ["Database.Migrate", "MigrateAsync(", "EnsureCreated"]:
+    require(forbidden not in program, f"API startup must not contain {forbidden}; migrations are a separate admin process")
 
 handler_names = [
     "CreateProjectHandler", "GetProjectHandler", "ListProjectsHandler", "UpdateProjectHandler",
