@@ -1,3 +1,5 @@
+using Microsoft.Extensions.Logging.Abstractions;
+using TaskFlow.Api.Observability;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using TaskFlow.Api.Contracts.Common;
@@ -212,7 +214,8 @@ public sealed class ApiCrudPostgresTests(PostgresFixture fixture) : IClassFixtur
         ProjectQueries projectQueries = new(dbContext);
         TaskQueries taskQueries = new(dbContext);
         TagQueries tagQueries = new(dbContext);
-        UnitOfWork unitOfWork = new(dbContext);
+        UnitOfWork unitOfWork = new(dbContext, NullLogger<UnitOfWork>.Instance);
+        var applicationEvents = new ApplicationEventLogger(NullLogger<ApplicationEventLogger>.Instance);
         EfTransactionManager transactions = new(dbContext);
 
         ProjectsController projectsController = AttachHttpContext(new ProjectsController(
@@ -222,7 +225,8 @@ public sealed class ApiCrudPostgresTests(PostgresFixture fixture) : IClassFixtur
             new UpdateProjectHandler(actor, projects, unitOfWork, timeProvider),
             new ArchiveProjectHandler(actor, projects, unitOfWork, transactions, timeProvider),
             new RestoreProjectHandler(actor, projects, unitOfWork, transactions, timeProvider),
-            new DeleteProjectHandler(actor, projects, unitOfWork)));
+            new DeleteProjectHandler(actor, projects, unitOfWork),
+            applicationEvents));
 
         TasksController tasksController = AttachHttpContext(new TasksController(
             new CreateTaskHandler(actor, projects, tasks, unitOfWork, transactions, timeProvider),
@@ -231,14 +235,16 @@ public sealed class ApiCrudPostgresTests(PostgresFixture fixture) : IClassFixtur
             new UpdateTaskHandler(actor, projects, tasks, unitOfWork, transactions, timeProvider),
             new DeleteTaskHandler(actor, projects, tasks, unitOfWork, transactions),
             new AddTagToTaskHandler(actor, projects, tasks, tags, unitOfWork, transactions, timeProvider),
-            new RemoveTagFromTaskHandler(actor, projects, tasks, tags, unitOfWork, transactions)));
+            new RemoveTagFromTaskHandler(actor, projects, tasks, tags, unitOfWork, transactions),
+            applicationEvents));
 
         TagsController tagsController = AttachHttpContext(new TagsController(
             new CreateTagHandler(actor, tags, unitOfWork, timeProvider),
             new GetTagHandler(actor, tagQueries),
             new ListTagsHandler(actor, tagQueries),
             new UpdateTagHandler(actor, tags, unitOfWork, timeProvider),
-            new DeleteTagHandler(actor, tags, unitOfWork)));
+            new DeleteTagHandler(actor, tags, unitOfWork),
+            applicationEvents));
 
         return new ControllerSet(projectsController, tasksController, tagsController);
     }

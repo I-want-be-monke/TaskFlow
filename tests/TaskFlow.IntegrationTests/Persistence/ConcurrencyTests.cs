@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Logging.Abstractions;
 using TaskFlow.Application.Common.Abstractions;
 using TaskFlow.Application.Common.Errors;
 using TaskFlow.Application.Common.Results;
@@ -29,7 +30,7 @@ public sealed class ConcurrencyTests(PostgresFixture fixture) : IClassFixture<Po
         ProjectRepository projectRepository = new(dbContext);
         TaskRepository taskRepository = new(dbContext);
         TagRepository tagRepository = new(dbContext);
-        UnitOfWork unitOfWork = new(dbContext);
+        UnitOfWork unitOfWork = new(dbContext, NullLogger<UnitOfWork>.Instance);
 
         Project loadedProject = (await projectRepository.GetOwnedByIdAsync(
             ownerId,
@@ -72,8 +73,8 @@ public sealed class ConcurrencyTests(PostgresFixture fixture) : IClassFixture<Po
         await using TaskFlowDbContext secondContext = fixture.CreateDbContext();
         ProjectRepository firstRepository = new(firstContext);
         ProjectRepository secondRepository = new(secondContext);
-        UnitOfWork firstUnitOfWork = new(firstContext);
-        UnitOfWork secondUnitOfWork = new(secondContext);
+        UnitOfWork firstUnitOfWork = new(firstContext, NullLogger<UnitOfWork>.Instance);
+        UnitOfWork secondUnitOfWork = new(secondContext, NullLogger<UnitOfWork>.Instance);
 
         Project first = (await firstRepository.GetOwnedByIdAsync(
             ownerId,
@@ -110,8 +111,8 @@ public sealed class ConcurrencyTests(PostgresFixture fixture) : IClassFixture<Po
         await using TaskFlowDbContext secondContext = fixture.CreateDbContext();
         TagRepository firstRepository = new(firstContext);
         TagRepository secondRepository = new(secondContext);
-        UnitOfWork firstUnitOfWork = new(firstContext);
-        UnitOfWork secondUnitOfWork = new(secondContext);
+        UnitOfWork firstUnitOfWork = new(firstContext, NullLogger<UnitOfWork>.Instance);
+        UnitOfWork secondUnitOfWork = new(secondContext, NullLogger<UnitOfWork>.Instance);
 
         await firstRepository.AddAsync(
             Tag.Create(Guid.NewGuid(), ownerId, "Backend", PersistenceTestData.Now),
@@ -147,7 +148,7 @@ public sealed class ConcurrencyTests(PostgresFixture fixture) : IClassFixture<Po
 
         await using TaskFlowDbContext archiveContext = fixture.CreateDbContext();
         ProjectRepository archiveRepository = new(archiveContext);
-        UnitOfWork archiveUnitOfWork = new(archiveContext);
+        UnitOfWork archiveUnitOfWork = new(archiveContext, NullLogger<UnitOfWork>.Instance);
         EfTransactionManager archiveTransactionManager = new(archiveContext);
 
         TaskCompletionSource archiveSavedButUncommitted = NewSignal();
@@ -175,7 +176,7 @@ public sealed class ConcurrencyTests(PostgresFixture fixture) : IClassFixture<Po
         SignalingProjectRepository projectRepository = new(realProjectRepository, mutationReachedProjectLock);
         TaskRepository taskRepository = new(mutationContext);
         TagRepository tagRepository = new(mutationContext);
-        UnitOfWork unitOfWork = new(mutationContext);
+        UnitOfWork unitOfWork = new(mutationContext, NullLogger<UnitOfWork>.Instance);
         EfTransactionManager transactionManager = new(mutationContext);
         TestActor actor = new(ownerId);
         FixedTimeProvider timeProvider = new(PersistenceTestData.Now.AddMinutes(2));

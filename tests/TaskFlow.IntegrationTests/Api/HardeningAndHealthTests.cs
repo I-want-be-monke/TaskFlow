@@ -9,6 +9,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
+using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using TaskFlow.Api.Configuration;
 using TaskFlow.Api.Contracts.Auth;
@@ -122,7 +123,9 @@ public sealed class HardeningAndHealthTests(PostgresFixture fixture) : IClassFix
             .UseNpgsql(unavailablePostgres)
             .Options;
         await using var dbContext = new TaskFlowDbContext(dbOptions);
-        var readiness = new PostgresReadinessHealthCheck(dbContext);
+        var readiness = new PostgresReadinessHealthCheck(
+            dbContext,
+            NullLogger<PostgresReadinessHealthCheck>.Instance);
 
         HealthCheckResult result = await readiness.CheckHealthAsync(new HealthCheckContext());
 
