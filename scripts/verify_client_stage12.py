@@ -76,8 +76,9 @@ for forbidden in [
 # Razor owns presentation only; HTTP construction belongs to API clients/handlers.
 for razor in CLIENT.rglob("*.razor"):
     text = razor.read_text(encoding="utf-8")
-    for forbidden in ["HttpClient", "HttpRequestMessage", "SendAsync(", "GetAsync(", "PostAsync(", "PutAsync(", "DeleteAsync("]:
+    for forbidden in ["HttpClient", "HttpRequestMessage", "ApiHttpClient", "RawApiHttpClient", "SendAsync("]:
         require(forbidden not in text, f"{razor.relative_to(ROOT)} builds HTTP requests directly")
+    require("/api/v1/" not in text, f"{razor.relative_to(ROOT)} must call typed API clients instead of API routes")
 
 program = read(CLIENT / "Program.cs")
 for token in [
