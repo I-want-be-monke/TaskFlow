@@ -1,0 +1,17 @@
+.git
+.gitignore
+.gitattributes
+.env
+.env.*
+**/bin
+**/obj
+**/.vs
+**/.idea
+**/*.user
+**/*.suo
+coverage
+TestResults
+artifacts
+.local
+*.zip
+*.sha256

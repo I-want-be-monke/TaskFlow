@@ -16,6 +16,7 @@ TestResults/
 # Local configuration and secrets
 .env
 .env.*
+!.env.compose.example
 !.env.example
 appsettings.*.Local.json
 secrets.json
@@ -34,3 +35,7 @@ Thumbs.db
 coverage/
 *.coverage
 *.coveragexml
+
+# Stage 14 local container runtime material
+.env.compose.local
+.local/
