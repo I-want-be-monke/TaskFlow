@@ -1,248 +1,284 @@
-# TaskFlow — Stage 9
+# TaskFlow — Stage 10
 
-TaskFlow реализуется по архитектурным этапам. **Stages 0–9 завершены в этом snapshot**: repository/build foundation, чистый Domain/Application, PostgreSQL persistence/concurrency, HTTP API, browser-session security и production hardening baseline.
+TaskFlow реализуется по архитектурным этапам. **Stages 0–10 завершены в этом snapshot**: repository/build foundation, Domain/Application, PostgreSQL persistence/concurrency, HTTP API, browser-session security, production hardening и structured observability.
 
-## Кратко: что добавлено на Stage 9
+## Кратко: что добавлено на Stage 10
 
-- typed Options: `SecurityOptions`, `CorsOptions`, `ProxyOptions`, `ObservabilityOptions`, `RequestLimitOptions`;
-- дополнительный `AuthOptions`, потому что `Auth__AllowRegistration` уже был частью configuration contract, но Stage 8 его не применял;
-- `ValidateDataAnnotations()`, custom `Validate(...)` и `ValidateOnStart()`;
-- Kestrel + middleware request body limit;
-- global request timeout через ASP.NET Core RequestTimeouts;
-- bounded pagination остаётся `PageSize <= 100` на Application boundary;
-- global rate limiting: authenticated user -> user partition, anonymous -> trusted remote IP partition;
-- отдельный строгий limiter для `register/login`;
-- trusted `X-Forwarded-For` / `X-Forwarded-Proto` только от configured `KnownProxies`/`KnownIPNetworks`;
-- в .NET 10 используется `System.Net.IPNetwork`, не obsolete `KnownNetworks`;
-- CORS включается только в Development и только по exact origin allowlist;
-- security-header contract для reverse proxy/edge;
-- `GET /health/live` без PostgreSQL dependency;
-- `GET /health/ready` с PostgreSQL connectivity check;
-- API startup по-прежнему не выполняет migrations;
-- Stage 8 security implementation повторно проверена и усилена конфигурируемым `AllowRegistration`.
+- единый structured JSON console formatter для API и DbMigrator;
+- `one event = one JSON line`, только stdout/stderr, без file sink;
+- стабильная log schema с release/environment/instance metadata;
+- W3C `trace_id` / `span_id` + `request_id` correlation;
+- стабильный `TaskFlowLogEvents` catalog и диапазоны EventId;
+- один `RequestCompleted` event на HTTP request;
+- один основной `UnhandledException` Error event на API boundary;
+- security events для login/lockout/logout/authz/CSRF/rate-limit/config failures;
+- slow PostgreSQL operation logging без SQL text/parameter values;
+- application-significant events для Project/Task/Tag;
+- explicit suppression framework request/exception duplication и noisy EF command logs;
+- allowlist structured fields + sensitive-message redaction;
+- `Observability__InstanceId` для replica/process identity;
+- logging contract tests и `scripts/verify-stage10.sh`.
 
-## Stage 8 audit
+## Production log schema
 
-Повторно проверены:
+Каждая строка — отдельный JSON object. Базовые поля:
 
 ```text
-Identity password hashing
-HttpOnly + Secure + SameSite=Strict __Host- auth cookie
-finite cookie lifetime / non-persistent sign-in
-shared PostgreSQL Data Protection key ring
-fallback RequireAuthenticatedUser
-register/login/logout/me
-lockout + generic auth.invalid_credentials
-CSRF for POST/PUT/PATCH/DELETE
-safe GET/HEAD/OPTIONS
-owner-scoped BOLA -> 404
-cross-replica cookie/antiforgery contract
-no bearer/JWT/browser-storage auth path
+schema_version
+@timestamp
+log_level
+event_id
+event_name
+message
+service_name
+service_version
+deployment_environment
+instance_id
+trace_id
+span_id
+request_id
 ```
 
-Нового bypass не найдено. Один реальный недочёт Stage 8 исправлен: `.env.example` уже содержал `Auth__AllowRegistration`, но endpoint регистрации его не учитывал. Теперь при `false` registration возвращает RFC7807 `403 auth.registration_disabled`.
-
-## Configuration contract
-
-Основные environment keys:
+Опционально, только когда применимо:
 
 ```text
-ConnectionStrings__Postgres
+user_id
+http_method
+http_route
+http_status_code
+duration_ms
+error_type
+security_event_id
+outcome
+reason_code
+client_ip
+db_operation
+application_event_id
+project_id / task_id / tag_id
+process_type / operation_id
+```
 
-Auth__AllowRegistration
+`http_route` — route template, например `/api/v1/tasks/{taskId:guid}`, а не raw URL. Query string не входит в log contract.
 
-Security__RateLimit__ApiPermitLimit
-Security__RateLimit__LoginPermitLimit
-Security__RateLimit__WindowSeconds
-Security__RequestTimeoutSeconds
-Security__MaxRequestBodyBytes
+## EventId catalog
 
-Cors__AllowedOrigins__0
+```text
+1000-1999  HTTP / API lifecycle
+2000-2999  Application-significant events
+3000-3999  Persistence / PostgreSQL
+4000-4999  Authentication / Authorization / Security
+5000-5999  Admin / Migration / Startup
+6000-6999  Future external adapters
+```
 
-Proxy__ForwardLimit
-Proxy__KnownProxies__0
-Proxy__KnownNetworks__0
+Текущий стабильный минимум:
 
-Observability__ServiceVersion
+```text
+1001 RequestCompleted
+1002 RequestRejected
+1003 UnhandledException
+
+2001 ProjectCreated
+2002 ProjectArchived
+2101 TaskCreated
+2102 TaskUpdated
+2201 TagCreated
+
+3001 DatabaseUnavailable
+3002 SlowDatabaseOperation
+3003 ConcurrencyConflict
+
+4001 LoginSucceeded
+4002 LoginFailed
+4003 AccountLockedOut
+4004 Logout
+4010 AuthorizationDenied
+4011 CsrfValidationFailed
+4012 RateLimitRejected
+4013 SecurityConfigurationError
+
+5001 ApplicationStarted
+5002 ApplicationStopping
+5003 ApplicationStopped
+5101 MigrationStarted
+5102 MigrationCompleted
+5103 MigrationFailed
+```
+
+`event_id` и `event_name` считаются контрактом; текст `message` может меняться без поломки dashboards/alerts.
+
+## Request correlation
+
+ASP.NET Core создаёт W3C `Activity` для входящего HTTP request. Formatter автоматически пишет:
+
+```text
+trace_id
+span_id
+```
+
+`RequestLoggingMiddleware` добавляет scope с:
+
+```text
+request_id
+http_method
+```
+
+и после завершения request пишет один `RequestCompleted` с route template, status, duration и `user_id`, если authenticated actor известен.
+
+Успешные `/health/live` и `/health/ready` логируются только на `Debug`, чтобы probes не создавали Information-шум; failure остаётся видимым.
+
+## Exception policy
+
+Unexpected request exception логируется централизованно в `GlobalExceptionHandler`:
+
+```text
+1003 UnhandledException
+level = Error
+error_type
+trace_id / request_id
+safe route template
+stack trace
+```
+
+ASP.NET Core framework-category `ExceptionHandlerMiddleware` отключён от console stream, поэтому тот же exception не дублируется вторым Error event.
+
+`RequestCompleted` для HTTP 500 остаётся `Warning`, а не вторым `Error`.
+
+Exception message намеренно не сериализуется formatter'ом. Клиент продолжает получать безопасный RFC7807 без stack trace.
+
+## Sensitive-data policy
+
+Structured fields принимаются formatter'ом по allowlist. Не являются частью log contract:
+
+```text
+request/response body
+query string
+Authorization
+Cookie / Set-Cookie
+antiforgery token
+password / password hash
+Data Protection keys
+connection string / DB password
+secret environment values
+raw files
+```
+
+Дополнительная message-redaction блокирует сообщения, похожие на credentials/cookie/connection-string data.
+
+EF Core остаётся с:
+
+```csharp
+EnableSensitiveDataLogging(false)
+```
+
+и category `Microsoft.EntityFrameworkCore.Database.Command` ограничена `Warning+`, поэтому обычный SQL stream не пишется на Information.
+
+## Security events
+
+Security logging использует только server-known/safe context:
+
+```text
+security_event_id
+event_name
+trace_id
+request_id
+user_id?          # только UUID
+client_ip?        # после trusted proxy processing
+http_route
+outcome
+reason_code
+```
+
+Login failure не логирует username/password. CSRF event не логирует token. Rate-limit event не доверяет raw `X-Forwarded-For`: используется уже нормализованный `RemoteIpAddress` после Stage 9 trusted-proxy middleware.
+
+## Database observability
+
+`SlowDatabaseCommandInterceptor` получает threshold из:
+
+```text
 Observability__SlowDbThresholdMs
 ```
 
-Все Stage 9 options проходят fail-fast validation при startup.
-
-## Request limits
-
-Default baseline из `.env.example`:
+и пишет `3002 SlowDatabaseOperation` только с:
 
 ```text
-Max request body = 1 MiB
-Request timeout  = 30 seconds
-PageSize         <= 100
+db_operation
+duration_ms
+trace_id
 ```
 
-Oversized request с известным `Content-Length` получает:
+Он намеренно не читает `CommandText`, parameters или bind values.
+
+`UnitOfWork` пишет typed persistence outcomes:
 
 ```text
-413
-application/problem+json
-code = http.request_too_large
+3003 ConcurrencyConflict  -> Warning, ожидаемый optimistic conflict
+3001 DatabaseUnavailable -> Error, dependency failure преобразован в typed Result
 ```
 
-Kestrel также получает тот же `MaxRequestBodySize`, поэтому production server ограничивает body до чтения дорогостоящего payload.
+Поскольку эти exceptions поглощаются/преобразуются persistence boundary, лог здесь не дублирует rethrow на API boundary.
 
-Timeout policy возвращает:
+## Application-significant events
+
+Не логируется вход/выход каждого handler. Добавлен только небольшой стабильный набор значимых success events:
 
 ```text
-503
-code = http.request_timeout
+ProjectCreated
+ProjectArchived
+TaskCreated
+TaskUpdated
+TagCreated
 ```
 
-и отменяет `HttpContext.RequestAborted`, позволяя handlers/repositories корректно распространить cancellation.
+В события попадают только внутренние UUID, не user-entered names/descriptions.
 
-## Rate limiting
+## API и DbMigrator используют один формат
 
-Global limiter:
+Shared implementation находится в:
 
 ```text
-authenticated request -> partition user:<user-id>
-anonymous request     -> partition ip:<trusted remote ip>
+src/TaskFlow.Infrastructure/Observability/
 ```
 
-Strict auth limiter дополнительно применяется к:
+`TaskFlow.Api` запускает formatter как `service_name = TaskFlow.Api`.
+
+`TaskFlow.DbMigrator` уже переведён с `Console.WriteLine` на тот же formatter с `service_name = TaskFlow.DbMigrator` и `operation_id`. Сами migration execution events `5101-5103` будут использованы при реализации migration process на Stage 11.
+
+Никаких local log files, rotation или synchronous remote log sink в приложении нет.
+
+## Configuration
+
+Stage 10 observability keys:
 
 ```text
-POST /api/v1/auth/register
-POST /api/v1/auth/login
+Observability__ServiceVersion=dev
+Observability__InstanceId=taskflow-api-local
+Observability__SlowDbThresholdMs=500
 ```
 
-Baseline:
+`ServiceVersion` должен быть immutable release id/commit SHA в deployment. `InstanceId` обычно задаётся pod/container environment; если он не указан, formatter использует `TASKFLOW_INSTANCE_ID`, затем `HOSTNAME`, затем process-local fallback.
+
+## Tests Stage 10
+
+Добавлены проверки:
 
 ```text
-API permits    = 100 / 60 sec
-Auth permits   = 10 / 60 sec
-QueueLimit     = 0
+one JSON event per line
+required fields stable
+trace/span/request correlation fields
+EventId/EventName catalog stable
+RequestCompleted emitted once
+HTTP 500 completion is not second Error event
+one explicit unexpected-exception Error event at API boundary
+password absent
+cookie absent
+antiforgery token absent
+connection string absent
+exception message not serialized
+DbMigrator uses same formatter
+slow DB logger does not inspect SQL/parameters
+no file sink / sensitive EF logging
 ```
-
-При превышении:
-
-```text
-429
-application/problem+json
-code = http.rate_limit_exceeded
-Retry-After = <если limiter предоставил metadata>
-```
-
-Identity lockout остаётся отдельной второй линией защиты login.
-
-## Trusted proxy contract
-
-Forwarded headers **не обрабатываются вообще**, если не задан ни один trusted proxy/network.
-
-Когда allowlist задан:
-
-```text
-X-Forwarded-For
-X-Forwarded-Proto
-```
-
-принимаются только от `Proxy__KnownProxies` / `Proxy__KnownNetworks`, `ForwardLimit` bounded, header symmetry включена.
-
-Это важно, потому что anonymous rate-limit partition использует уже нормализованный `RemoteIpAddress`, а не напрямую клиентский header.
-
-## CORS
-
-Production deployment — same-origin, поэтому CORS middleware там не включается.
-
-Только `Development` может включить policy из:
-
-```text
-Cors__AllowedOrigins__N
-```
-
-Origins валидируются как точные HTTP(S) origins. Wildcard `*`, path/query/fragment и trailing slash запрещены. `AllowAnyOrigin + credentials` отсутствует.
-
-## Health checks
-
-```text
-GET /health/live
-GET /health/ready
-```
-
-`/health/live`:
-
-```text
-AllowAnonymous
-не проверяет PostgreSQL
-показывает, что process/HTTP pipeline жив
-```
-
-`/health/ready`:
-
-```text
-остается под fallback authorization
-проверяет TaskFlowDbContext.Database.CanConnectAsync
-Healthy -> replica может принимать traffic
-Unhealthy -> replica не готова
-```
-
-Это сохраняет архитектурный default-deny contract, где anonymous health exception указан только для `/health/live`.
-
-Оба health endpoints исключены из rate limiting, чтобы probe traffic сам не делал replica unhealthy.
-
-## Reverse-proxy security headers
-
-Stage 9 добавляет edge contract:
-
-```text
-deploy/reverse-proxy/security-headers.conf
-```
-
-Он фиксирует минимум:
-
-```text
-Content-Security-Policy
-X-Content-Type-Options: nosniff
-Referrer-Policy
-Permissions-Policy
-frame-ancestors 'none'
-```
-
-TLS/security headers остаются обязанностью ingress/reverse proxy, как требует архитектура.
-
-## Middleware baseline
-
-```text
-ForwardedHeaders
--> ExceptionHandler / ProblemDetails
--> Routing
--> Request body limit
--> RequestTimeouts
--> CORS (Development only)
--> Authentication
--> RateLimiter
--> Authorization
--> MVC antiforgery filter for unsafe requests
--> Controllers
-```
-
-## Tests Stage 9
-
-Добавлены/расширены проверки:
-
-```text
-invalid DataAnnotation Options -> startup failure
-invalid custom CORS Options -> startup failure
-request body too large -> 413
-strict auth limiter -> 429
-request timeout config binding
-live works with unavailable PostgreSQL
-readiness checker becomes Unhealthy with unavailable PostgreSQL
-anonymous /health/ready rejected by fallback auth
-forwarded headers accepted only from allowlisted proxy
-Auth__AllowRegistration=false blocks register
-API startup still contains no Migrate/EnsureCreated
-```
-
-PostgreSQL/Testcontainers security/concurrency tests Stages 5–8 остаются частью полного suite.
 
 ## Полная проверка
 
@@ -256,19 +292,19 @@ Docker Engine / Docker Desktop
 Из корня:
 
 ```bash
-./scripts/verify-stage9.sh
+./scripts/verify-stage10.sh
 ```
 
 Скрипт выполняет:
 
 ```text
-Stages 0–9 source/architecture verification
+Stages 0–10 source/architecture verification
 -> dotnet restore --locked-mode
 -> Release build
 -> Docker availability
 -> полный test suite
 ```
 
-В текущем artifact-контейнере `dotnet` и Docker отсутствуют, поэтому snapshot **не утверждает**, что runtime build/Testcontainers были выполнены здесь. Доступные static checks, JSON/XML validation, Git integrity и archive integrity выполняются перед упаковкой.
+В текущем artifact-контейнере `dotnet` и Docker отсутствуют. Поэтому snapshot не утверждает, что runtime build/Testcontainers были выполнены здесь. Все доступные static checks Stages 0–10 проходят перед упаковкой.
 
-Подробное объяснение решений: [`docs/STAGE_9_RATIONALE.md`](docs/STAGE_9_RATIONALE.md).
+Подробное объяснение решений: [`docs/STAGE_10_RATIONALE.md`](docs/STAGE_10_RATIONALE.md).
