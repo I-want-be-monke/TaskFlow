@@ -3,9 +3,9 @@
     <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
   </PropertyGroup>
 
-  <!--
-    Stage 0 intentionally has no external NuGet dependencies.
-    New package versions must be declared here first; project files reference
-    packages without Version attributes.
-  -->
+  <ItemGroup>
+    <PackageVersion Include="xunit.v3.mtp-v2" Version="4.0.0" />
+  </ItemGroup>
+
+  <!-- All package versions live here; project files never carry Version attributes. -->
 </Project>
