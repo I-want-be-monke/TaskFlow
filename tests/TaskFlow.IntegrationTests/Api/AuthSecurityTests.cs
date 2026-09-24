@@ -343,6 +343,27 @@ public sealed class AuthSecurityTests(PostgresFixture fixture) : IClassFixture<P
     }
 
     [Fact]
+    public async Task RegistrationCanBeDisabledByConfiguration()
+    {
+        await using var factory = new TaskFlowWebApplicationFactory(
+            fixture.ConnectionString,
+            new Dictionary<string, string?>
+            {
+                ["Auth:AllowRegistration"] = "false",
+            });
+        using HttpClient client = factory.CreateHttpsClient();
+        await RefreshAntiforgeryAsync(client);
+
+        using HttpResponseMessage response = await client.PostAsJsonAsync(
+            "/api/v1/auth/register",
+            new RegisterRequest(UniqueUserName("disabled"), StrongPassword));
+
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+        ProblemDetails problem = await ReadRequiredAsync<ProblemDetails>(response);
+        Assert.Equal("auth.registration_disabled", GetExtensionString(problem, "code"));
+    }
+
+    [Fact]
     public async Task CookieAndAntiforgeryTokens_WorkAcrossApiReplicasSharingPostgresKeyRing()
     {
         await using var replicaA = new TaskFlowWebApplicationFactory(fixture.ConnectionString);

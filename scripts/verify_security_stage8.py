@@ -108,6 +108,8 @@ for token in [
     "SignOutAsync()",
     "GetUserAsync(User)",
     '"auth.invalid_credentials"',
+    "authOptions.Value.AllowRegistration",
+    '"auth.registration_disabled"',
 ]:
     require(token in controller, f"auth controller missing {token}")
 for forbidden in ["PasswordHasher", "SHA256", "Rfc2898", "Bearer", "RefreshToken", "Request.Headers"]:
@@ -143,6 +145,7 @@ for token in [
     "AccountLockout_TriggersAfterConfiguredFailuresAndKeepsExternalResponseGeneric",
     "BolaMatrix_ForeignProjectTaskTagAndRelationReturnNotFound",
     "CookieAndAntiforgeryTokens_WorkAcrossApiReplicasSharingPostgresKeyRing",
+    "RegistrationCanBeDisabledByConfiguration",
     '"security.csrf_validation_failed"',
     '"auth.invalid_credentials"',
     "AccessFailedCount",

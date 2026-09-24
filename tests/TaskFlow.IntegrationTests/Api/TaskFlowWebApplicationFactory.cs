@@ -1,21 +1,32 @@
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.Configuration;
-using TaskFlow.IntegrationTests.Persistence;
 
 namespace TaskFlow.IntegrationTests.Api;
 
-internal sealed class TaskFlowWebApplicationFactory(string connectionString) : WebApplicationFactory<Program>
+internal sealed class TaskFlowWebApplicationFactory(
+    string connectionString,
+    IReadOnlyDictionary<string, string?>? configurationOverrides = null) : WebApplicationFactory<Program>
 {
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         builder.UseEnvironment("Testing");
         builder.ConfigureAppConfiguration((_, configurationBuilder) =>
         {
-            configurationBuilder.AddInMemoryCollection(new Dictionary<string, string?>
+            var settings = new Dictionary<string, string?>
             {
                 ["ConnectionStrings:Postgres"] = connectionString,
-            });
+            };
+
+            if (configurationOverrides is not null)
+            {
+                foreach ((string key, string? value) in configurationOverrides)
+                {
+                    settings[key] = value;
+                }
+            }
+
+            configurationBuilder.AddInMemoryCollection(settings);
         });
     }
 
