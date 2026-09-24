@@ -1,7 +1,7 @@
 namespace TaskFlow.Domain;
 
 /// <summary>
-/// Marker for the Domain assembly. Business entities are introduced in stage 1.
+/// Marker for the framework-independent Domain assembly.
 /// </summary>
 public sealed class AssemblyMarker
 {
