@@ -5,11 +5,13 @@ using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Options;
 using TaskFlow.Api.Configuration;
+using TaskFlow.Api.Observability;
 
 namespace TaskFlow.Api.RateLimiting;
 
-public sealed class RateLimiterOptionsSetup(IOptions<SecurityOptions> securityOptions)
-    : IConfigureOptions<RateLimiterOptions>
+public sealed class RateLimiterOptionsSetup(
+    IOptions<SecurityOptions> securityOptions,
+    SecurityEventLogger securityEvents) : IConfigureOptions<RateLimiterOptions>
 {
     public void Configure(RateLimiterOptions options)
     {
@@ -17,8 +19,10 @@ public sealed class RateLimiterOptionsSetup(IOptions<SecurityOptions> securityOp
         TimeSpan window = TimeSpan.FromSeconds(limits.WindowSeconds);
 
         options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
-        options.OnRejected = static async (context, cancellationToken) =>
+        options.OnRejected = async (context, cancellationToken) =>
         {
+            securityEvents.RateLimitRejected(context.HttpContext);
+
             if (context.Lease.TryGetMetadata(MetadataName.RetryAfter, out TimeSpan retryAfter))
             {
                 context.HttpContext.Response.Headers["Retry-After"] =

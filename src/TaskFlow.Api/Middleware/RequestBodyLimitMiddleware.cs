@@ -2,12 +2,14 @@ using Microsoft.AspNetCore.Http.Features;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Options;
 using TaskFlow.Api.Configuration;
+using TaskFlow.Infrastructure.Observability;
 
 namespace TaskFlow.Api.Middleware;
 
 public sealed class RequestBodyLimitMiddleware(
     RequestDelegate next,
-    IOptions<RequestLimitOptions> requestLimitOptions)
+    IOptions<RequestLimitOptions> requestLimitOptions,
+    ILogger<RequestBodyLimitMiddleware> logger)
 {
     public async Task InvokeAsync(HttpContext context)
     {
@@ -20,6 +22,11 @@ public sealed class RequestBodyLimitMiddleware(
 
         if (context.Request.ContentLength is long contentLength && contentLength > maxBytes)
         {
+            logger.LogWarning(
+                TaskFlowLogEvents.RequestRejected,
+                "Request rejected. Reason={reason_code} Status={http_status_code}",
+                "request_body_too_large",
+                StatusCodes.Status413PayloadTooLarge);
             await WriteTooLargeAsync(context, maxBytes);
             return;
         }

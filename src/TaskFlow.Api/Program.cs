@@ -13,6 +13,7 @@ using TaskFlow.Api.Configuration;
 using TaskFlow.Api.Errors;
 using TaskFlow.Api.Health;
 using TaskFlow.Api.Middleware;
+using TaskFlow.Api.Observability;
 using TaskFlow.Api.RateLimiting;
 using TaskFlow.Api.Security;
 using TaskFlow.Application.Common.Abstractions;
@@ -37,12 +38,30 @@ using TaskFlow.Application.Tasks.ListTasks;
 using TaskFlow.Application.Tasks.RemoveTagFromTask;
 using TaskFlow.Application.Tasks.UpdateTask;
 using TaskFlow.Infrastructure.Identity;
+using TaskFlow.Infrastructure.Observability;
 using TaskFlow.Infrastructure.Persistence;
+using TaskFlow.Infrastructure.Persistence.Interceptors;
 using TaskFlow.Infrastructure.Persistence.Queries;
 using TaskFlow.Infrastructure.Persistence.Transactions;
 using TaskFlow.Infrastructure.Repositories;
 
 WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
+
+string configuredServiceVersion = builder.Configuration["Observability:ServiceVersion"] ?? "dev";
+string loggingServiceVersion = string.IsNullOrWhiteSpace(configuredServiceVersion)
+    ? "invalid"
+    : configuredServiceVersion;
+
+builder.Logging.ClearProviders();
+builder.Logging.AddTaskFlowJsonConsole(
+    serviceName: "TaskFlow.Api",
+    serviceVersion: loggingServiceVersion,
+    deploymentEnvironment: builder.Environment.EnvironmentName,
+    instanceId: builder.Configuration["Observability:InstanceId"]);
+builder.Logging.AddFilter("Microsoft.AspNetCore.Hosting.Diagnostics", LogLevel.Warning);
+builder.Logging.AddFilter("Microsoft.AspNetCore.Diagnostics.ExceptionHandlerMiddleware", LogLevel.None);
+builder.Logging.AddFilter("Microsoft.EntityFrameworkCore.Database.Command", LogLevel.Warning);
+builder.Logging.AddFilter("Microsoft.EntityFrameworkCore.Database.Connection", LogLevel.Warning);
 
 string postgresConnectionString = builder.Configuration.GetConnectionString("Postgres")
     ?? throw new InvalidOperationException("ConnectionStrings:Postgres is required.");
@@ -89,12 +108,18 @@ builder.Services
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<ApiAntiforgeryFilter>();
 builder.Services.AddScoped<ICurrentActor, HttpContextCurrentActor>();
+builder.Services.AddSingleton<SecurityEventLogger>();
+builder.Services.AddSingleton<ApplicationEventLogger>();
 builder.Services.AddSingleton(TimeProvider.System);
+builder.Services.AddSingleton(sp => new SlowDatabaseCommandInterceptor(
+    sp.GetRequiredService<ILogger<SlowDatabaseCommandInterceptor>>(),
+    sp.GetRequiredService<IOptions<ObservabilityOptions>>().Value.SlowDbThresholdMs));
 
-builder.Services.AddDbContext<TaskFlowDbContext>(options =>
+builder.Services.AddDbContext<TaskFlowDbContext>((serviceProvider, options) =>
 {
     options.UseNpgsql(postgresConnectionString);
     options.EnableSensitiveDataLogging(false);
+    options.AddInterceptors(serviceProvider.GetRequiredService<SlowDatabaseCommandInterceptor>());
 });
 
 builder.Services
@@ -132,18 +157,30 @@ builder.Services.ConfigureApplicationCookie(options =>
     options.ExpireTimeSpan = TimeSpan.FromHours(8);
     options.SlidingExpiration = true;
     // Keep Identity's OnValidatePrincipal security-stamp validator installed by AddIdentityCookies.
-    options.Events.OnRedirectToLogin = context => AuthenticationProblemWriter.WriteAsync(
-        context.HttpContext,
-        new Error(
-            new ErrorCode("auth.authentication_required"),
-            ErrorType.Unauthenticated,
-            "Authentication is required."));
-    options.Events.OnRedirectToAccessDenied = context => AuthenticationProblemWriter.WriteAsync(
-        context.HttpContext,
-        new Error(
-            new ErrorCode("auth.forbidden"),
-            ErrorType.Forbidden,
-            "Access is forbidden."));
+    options.Events.OnRedirectToLogin = context =>
+    {
+        context.HttpContext.RequestServices
+            .GetRequiredService<SecurityEventLogger>()
+            .AuthorizationDenied(context.HttpContext, "authentication_required");
+        return AuthenticationProblemWriter.WriteAsync(
+            context.HttpContext,
+            new Error(
+                new ErrorCode("auth.authentication_required"),
+                ErrorType.Unauthenticated,
+                "Authentication is required."));
+    };
+    options.Events.OnRedirectToAccessDenied = context =>
+    {
+        context.HttpContext.RequestServices
+            .GetRequiredService<SecurityEventLogger>()
+            .AuthorizationDenied(context.HttpContext, "access_forbidden");
+        return AuthenticationProblemWriter.WriteAsync(
+            context.HttpContext,
+            new Error(
+                new ErrorCode("auth.forbidden"),
+                ErrorType.Forbidden,
+                "Access is forbidden."));
+    };
 });
 
 builder.Services.AddAntiforgery(options =>
@@ -194,7 +231,23 @@ builder.Services.AddScoped<DeleteTagHandler>();
 
 WebApplication app = builder.Build();
 
+ILogger lifecycleLogger = app.Services.GetRequiredService<ILoggerFactory>().CreateLogger("TaskFlow.Lifecycle");
+SecurityEventLogger securityEventLogger = app.Services.GetRequiredService<SecurityEventLogger>();
+app.Lifetime.ApplicationStarted.Register(() => lifecycleLogger.LogInformation(
+    TaskFlowLogEvents.ApplicationStarted,
+    "Application started. ProcessType={process_type}",
+    "api"));
+app.Lifetime.ApplicationStopping.Register(() => lifecycleLogger.LogInformation(
+    TaskFlowLogEvents.ApplicationStopping,
+    "Application stopping. ProcessType={process_type}",
+    "api"));
+app.Lifetime.ApplicationStopped.Register(() => lifecycleLogger.LogInformation(
+    TaskFlowLogEvents.ApplicationStopped,
+    "Application stopped. ProcessType={process_type}",
+    "api"));
+
 app.UseForwardedHeaders();
+app.UseMiddleware<RequestLoggingMiddleware>();
 app.UseExceptionHandler();
 app.UseRouting();
 app.UseMiddleware<RequestBodyLimitMiddleware>();
@@ -224,7 +277,15 @@ app.MapHealthChecks("/health/ready", new HealthCheckOptions
     })
     .DisableRateLimiting();
 
-app.Run();
+try
+{
+    app.Run();
+}
+catch (OptionsValidationException)
+{
+    securityEventLogger.ConfigurationError("options_validation_failed");
+    throw;
+}
 
 public partial class Program
 {

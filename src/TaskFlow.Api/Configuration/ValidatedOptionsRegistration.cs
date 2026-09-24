@@ -43,8 +43,9 @@ public static class ValidatedOptionsRegistration
             .Bind(configuration.GetSection(ObservabilityOptions.SectionName))
             .ValidateDataAnnotations()
             .Validate(
-                options => options.ServiceVersion == options.ServiceVersion.Trim(),
-                "Observability:ServiceVersion must not contain leading or trailing whitespace.")
+                options => options.ServiceVersion == options.ServiceVersion.Trim()
+                    && (options.InstanceId is null || options.InstanceId == options.InstanceId.Trim()),
+                "Observability values must not contain leading or trailing whitespace.")
             .ValidateOnStart();
 
         services.AddOptions<AuthOptions>()

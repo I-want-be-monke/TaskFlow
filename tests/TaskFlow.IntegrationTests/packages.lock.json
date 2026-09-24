@@ -609,6 +609,7 @@
           "Microsoft.AspNetCore.DataProtection.EntityFrameworkCore": "[10.0.12, )",
           "Microsoft.AspNetCore.Identity.EntityFrameworkCore": "[10.0.12, )",
           "Microsoft.EntityFrameworkCore": "[10.0.12, )",
+          "Microsoft.Extensions.Logging.Console": "[10.0.12, )",
           "Npgsql.EntityFrameworkCore.PostgreSQL": "[10.0.3, )",
           "TaskFlow.Application": "[1.0.0, )",
           "TaskFlow.Domain": "[1.0.0, )"

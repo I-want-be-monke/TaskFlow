@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Mvc;
 using TaskFlow.Api.Contracts.Common;
 using TaskFlow.Api.Contracts.Tags;
 using TaskFlow.Api.Errors;
+using TaskFlow.Api.Observability;
 using TaskFlow.Application.Common.Pagination;
 using TaskFlow.Application.Common.Results;
 using TaskFlow.Application.Tags;
@@ -20,7 +21,8 @@ public sealed class TagsController(
     GetTagHandler getHandler,
     ListTagsHandler listHandler,
     UpdateTagHandler updateHandler,
-    DeleteTagHandler deleteHandler) : ControllerBase
+    DeleteTagHandler deleteHandler,
+    ApplicationEventLogger applicationEvents) : ControllerBase
 {
     [HttpGet]
     [ProducesResponseType(typeof(PagedResponse<TagResponse>), StatusCodes.Status200OK)]
@@ -72,6 +74,7 @@ public sealed class TagsController(
         }
 
         TagResponse response = result.Value.ToResponse();
+        applicationEvents.TagCreated(response.Id);
         return CreatedAtRoute(RouteNames.GetTag, new { tagId = response.Id }, response);
     }
 

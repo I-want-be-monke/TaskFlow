@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Mvc;
 using TaskFlow.Api.Contracts.Common;
 using TaskFlow.Api.Contracts.Tasks;
 using TaskFlow.Api.Errors;
+using TaskFlow.Api.Observability;
 using TaskFlow.Application.Common.Pagination;
 using TaskFlow.Application.Common.Results;
 using TaskFlow.Application.Tasks;
@@ -26,7 +27,8 @@ public sealed class TasksController(
     UpdateTaskHandler updateHandler,
     DeleteTaskHandler deleteHandler,
     AddTagToTaskHandler addTagHandler,
-    RemoveTagFromTaskHandler removeTagHandler) : ControllerBase
+    RemoveTagFromTaskHandler removeTagHandler,
+    ApplicationEventLogger applicationEvents) : ControllerBase
 {
     [HttpGet("tasks")]
     [ProducesResponseType(typeof(PagedResponse<TaskResponse>), StatusCodes.Status200OK)]
@@ -125,6 +127,7 @@ public sealed class TasksController(
         }
 
         TaskResponse response = result.Value.ToResponse();
+        applicationEvents.TaskCreated(response.Id, projectId);
         return CreatedAtRoute(RouteNames.GetTask, new { taskId = response.Id }, response);
     }
 
@@ -154,9 +157,13 @@ public sealed class TasksController(
                 request.Version),
             cancellationToken);
 
-        return result.IsFailure
-            ? this.ToProblem(result.Error!)
-            : Ok(result.Value.ToResponse());
+        if (result.IsFailure)
+        {
+            return this.ToProblem(result.Error!);
+        }
+
+        applicationEvents.TaskUpdated(taskId);
+        return Ok(result.Value.ToResponse());
     }
 
     [HttpDelete("tasks/{taskId:guid}")]

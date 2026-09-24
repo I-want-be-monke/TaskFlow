@@ -1,11 +1,13 @@
 using Microsoft.AspNetCore.Http.Timeouts;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Options;
+using TaskFlow.Infrastructure.Observability;
 
 namespace TaskFlow.Api.Configuration;
 
-public sealed class RequestTimeoutOptionsSetup(IOptions<RequestLimitOptions> requestLimitOptions)
-    : IConfigureOptions<RequestTimeoutOptions>
+public sealed class RequestTimeoutOptionsSetup(
+    IOptions<RequestLimitOptions> requestLimitOptions,
+    ILogger<RequestTimeoutOptionsSetup> logger) : IConfigureOptions<RequestTimeoutOptions>
 {
     public void Configure(RequestTimeoutOptions options)
     {
@@ -14,8 +16,14 @@ public sealed class RequestTimeoutOptionsSetup(IOptions<RequestLimitOptions> req
         {
             Timeout = TimeSpan.FromSeconds(limits.RequestTimeoutSeconds),
             TimeoutStatusCode = StatusCodes.Status503ServiceUnavailable,
-            WriteTimeoutResponse = static async context =>
+            WriteTimeoutResponse = async context =>
             {
+                logger.LogWarning(
+                    TaskFlowLogEvents.RequestRejected,
+                    "Request rejected. Reason={reason_code} Status={http_status_code}",
+                    "request_timeout",
+                    StatusCodes.Status503ServiceUnavailable);
+
                 var problem = new ProblemDetails
                 {
                     Status = StatusCodes.Status503ServiceUnavailable,

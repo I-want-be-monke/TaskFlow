@@ -1,10 +1,13 @@
 using Microsoft.AspNetCore.Antiforgery;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Filters;
+using TaskFlow.Api.Observability;
 
 namespace TaskFlow.Api.Security;
 
-public sealed class ApiAntiforgeryFilter(IAntiforgery antiforgery) : IAsyncAuthorizationFilter
+public sealed class ApiAntiforgeryFilter(
+    IAntiforgery antiforgery,
+    SecurityEventLogger securityEvents) : IAsyncAuthorizationFilter
 {
     private static readonly HashSet<string> SafeMethods = new(StringComparer.OrdinalIgnoreCase)
     {
@@ -26,6 +29,8 @@ public sealed class ApiAntiforgeryFilter(IAntiforgery antiforgery) : IAsyncAutho
         }
         catch (AntiforgeryValidationException)
         {
+            securityEvents.CsrfValidationFailed(context.HttpContext);
+
             var problem = new ProblemDetails
             {
                 Status = StatusCodes.Status400BadRequest,

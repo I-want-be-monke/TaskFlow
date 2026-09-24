@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Mvc;
 using TaskFlow.Api.Contracts.Common;
 using TaskFlow.Api.Contracts.Projects;
 using TaskFlow.Api.Errors;
+using TaskFlow.Api.Observability;
 using TaskFlow.Application.Common.Pagination;
 using TaskFlow.Application.Common.Results;
 using TaskFlow.Application.Projects;
@@ -24,7 +25,8 @@ public sealed class ProjectsController(
     UpdateProjectHandler updateHandler,
     ArchiveProjectHandler archiveHandler,
     RestoreProjectHandler restoreHandler,
-    DeleteProjectHandler deleteHandler) : ControllerBase
+    DeleteProjectHandler deleteHandler,
+    ApplicationEventLogger applicationEvents) : ControllerBase
 {
     [HttpGet]
     [ProducesResponseType(typeof(PagedResponse<ProjectResponse>), StatusCodes.Status200OK)]
@@ -76,6 +78,7 @@ public sealed class ProjectsController(
         }
 
         ProjectResponse response = result.Value.ToResponse();
+        applicationEvents.ProjectCreated(response.Id);
         return CreatedAtRoute(RouteNames.GetProject, new { projectId = response.Id }, response);
     }
 
@@ -106,9 +109,13 @@ public sealed class ProjectsController(
             new ArchiveProjectCommand(projectId, request.Version),
             cancellationToken);
 
-        return result.IsFailure
-            ? this.ToProblem(result.Error!)
-            : Ok(result.Value.ToResponse());
+        if (result.IsFailure)
+        {
+            return this.ToProblem(result.Error!);
+        }
+
+        applicationEvents.ProjectArchived(projectId);
+        return Ok(result.Value.ToResponse());
     }
 
     [HttpPost("{projectId:guid}/restore")]

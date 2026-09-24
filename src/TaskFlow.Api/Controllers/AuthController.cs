@@ -7,6 +7,7 @@ using Microsoft.Extensions.Options;
 using TaskFlow.Api.Configuration;
 using TaskFlow.Api.Contracts.Auth;
 using TaskFlow.Api.Errors;
+using TaskFlow.Api.Observability;
 using TaskFlow.Api.RateLimiting;
 using TaskFlow.Application.Common.Errors;
 using TaskFlow.Infrastructure.Identity;
@@ -20,7 +21,8 @@ public sealed class AuthController(
     UserManager<ApplicationUser> userManager,
     SignInManager<ApplicationUser> signInManager,
     TimeProvider timeProvider,
-    IOptions<AuthOptions> authOptions) : ControllerBase
+    IOptions<AuthOptions> authOptions,
+    SecurityEventLogger securityEvents) : ControllerBase
 {
     [AllowAnonymous]
     [HttpGet("antiforgery")]
@@ -68,6 +70,7 @@ public sealed class AuthController(
         }
 
         await signInManager.SignInAsync(user, isPersistent: false);
+        securityEvents.LoginSucceeded(HttpContext, user.Id, "registration_sign_in");
         return StatusCode(StatusCodes.Status201Created, new AuthUserResponse(user.Id, user.UserName!));
     }
 
@@ -90,6 +93,15 @@ public sealed class AuthController(
 
         if (!signInResult.Succeeded)
         {
+            if (signInResult.IsLockedOut)
+            {
+                securityEvents.AccountLockedOut(HttpContext);
+            }
+            else
+            {
+                securityEvents.LoginFailed(HttpContext);
+            }
+
             return this.ToProblem(new Error(new ErrorCode("auth.invalid_credentials"), ErrorType.Unauthenticated, "Invalid credentials."));
         }
 
@@ -97,9 +109,11 @@ public sealed class AuthController(
         if (user is null)
         {
             await signInManager.SignOutAsync();
+            securityEvents.LoginFailed(HttpContext, "user_resolution_failed");
             return this.ToProblem(new Error(new ErrorCode("auth.invalid_credentials"), ErrorType.Unauthenticated, "Invalid credentials."));
         }
 
+        securityEvents.LoginSucceeded(HttpContext, user.Id);
         return Ok(new AuthUserResponse(user.Id, user.UserName!));
     }
 
@@ -108,6 +122,7 @@ public sealed class AuthController(
     public async Task<IActionResult> Logout(CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
+        securityEvents.Logout(HttpContext);
         await signInManager.SignOutAsync();
         return NoContent();
     }

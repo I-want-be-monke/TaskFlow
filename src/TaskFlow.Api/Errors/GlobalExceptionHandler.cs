@@ -1,5 +1,7 @@
 using Microsoft.AspNetCore.Diagnostics;
 using Microsoft.AspNetCore.Mvc;
+using TaskFlow.Api.Observability;
+using TaskFlow.Infrastructure.Observability;
 
 namespace TaskFlow.Api.Errors;
 
@@ -10,7 +12,13 @@ public sealed class GlobalExceptionHandler(ILogger<GlobalExceptionHandler> logge
         Exception exception,
         CancellationToken cancellationToken)
     {
-        logger.LogError(exception, "Unhandled exception while processing {Method} {Path}", httpContext.Request.Method, httpContext.Request.Path);
+        logger.LogError(
+            TaskFlowLogEvents.UnhandledException,
+            exception,
+            "Unhandled request exception. Method={http_method} Route={http_route} Status={http_status_code}",
+            httpContext.Request.Method,
+            HttpLogContext.RouteTemplate(httpContext),
+            StatusCodes.Status500InternalServerError);
 
         ProblemDetails problem = ApiProblemDetails.Unexpected(httpContext.TraceIdentifier);
         httpContext.Response.StatusCode = problem.Status ?? StatusCodes.Status500InternalServerError;
