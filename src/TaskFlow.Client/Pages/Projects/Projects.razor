@@ -1,0 +1,159 @@
+@page "/projects"
+@attribute [Authorize]
+@inject ProjectsApiClient ProjectsApi
+@inject NavigationManager Navigation
+
+<PageTitle>Projects · TaskFlow</PageTitle>
+
+<section class="page-heading">
+    <div>
+        <p class="eyebrow">Workspace</p>
+        <h1>Projects</h1>
+        <p>Create a project, open it to manage tasks, or archive work that should no longer accept task mutations.</p>
+    </div>
+    <button type="button" class="button button-primary" @onclick="ToggleCreate">
+        @(_showCreate ? "Cancel" : "New project")
+    </button>
+</section>
+
+<ApiErrorPanel Problem="@_problem" ReloadRequested="LoadAsync" />
+
+@if (_showCreate)
+{
+    <section class="panel form-panel" data-testid="project-create-form">
+        <h2>Create project</h2>
+        <EditForm Model="@_createModel" OnValidSubmit="CreateAsync" FormName="project-create">
+            <DataAnnotationsValidator />
+            <ValidationSummary />
+
+            <label>
+                Name
+                <InputText class="input" @bind-Value="_createModel.Name" />
+                <ValidationMessage For="@(() => _createModel.Name)" />
+            </label>
+            <label>
+                Description
+                <InputTextArea class="input textarea" @bind-Value="_createModel.Description" />
+                <ValidationMessage For="@(() => _createModel.Description)" />
+            </label>
+            <div class="button-row">
+                <button class="button button-primary" type="submit" disabled="@_saving">
+                    @(_saving ? "Creating…" : "Create project")
+                </button>
+                <button class="button button-ghost" type="button" @onclick="ToggleCreate">Cancel</button>
+            </div>
+        </EditForm>
+    </section>
+}
+
+@if (_loading)
+{
+    <p class="loading-state" aria-live="polite">Loading projects…</p>
+}
+else if (_page is null || _page.Items.Count == 0)
+{
+    <section class="empty-state">
+        <h2>No projects yet</h2>
+        <p>Create the first project to start organizing tasks.</p>
+    </section>
+}
+else
+{
+    <div class="card-grid" data-testid="projects-list">
+        @foreach (ProjectDto project in _page.Items)
+        {
+            <article class="card">
+                <div class="card-header">
+                    <h2><a href="@($"/projects/{project.Id:D}")">@project.Name</a></h2>
+                    <span class="status-chip status-@project.Status.ToLowerInvariant()">@project.Status</span>
+                </div>
+                @if (!string.IsNullOrWhiteSpace(project.Description))
+                {
+                    <p>@project.Description</p>
+                }
+                else
+                {
+                    <p class="muted">No description.</p>
+                }
+                <div class="card-footer">
+                    <span class="muted">Version @project.Version</span>
+                    <a class="button button-secondary" href="@($"/projects/{project.Id:D}")">Open</a>
+                </div>
+            </article>
+        }
+    </div>
+
+    <PaginationControls Page="@_page.Page" TotalPages="@_page.TotalPages" Disabled="@_loading" PageChanged="ChangePageAsync" />
+}
+
+@code {
+    private const int PageSize = 12;
+    private readonly ProjectFormModel _createModel = new();
+    private PagedResponse<ProjectDto>? _page;
+    private UiProblemState? _problem;
+    private bool _loading = true;
+    private bool _saving;
+    private bool _showCreate;
+    private int _pageNumber = 1;
+
+    protected override async Task OnInitializedAsync() => await LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        _problem = null;
+
+        try
+        {
+            _page = await ProjectsApi.ListAsync(_pageNumber, PageSize);
+        }
+        catch (ApiProblemException exception)
+        {
+            _problem = UiProblemState.From(exception);
+        }
+        catch (Exception)
+        {
+            _problem = UiProblemState.Unexpected();
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private async Task CreateAsync()
+    {
+        _saving = true;
+        _problem = null;
+
+        try
+        {
+            ProjectDto created = await ProjectsApi.CreateAsync(_createModel.Name, _createModel.Description);
+            Navigation.NavigateTo($"/projects/{created.Id:D}");
+        }
+        catch (ApiProblemException exception)
+        {
+            _problem = UiProblemState.From(exception);
+        }
+        catch (Exception)
+        {
+            _problem = UiProblemState.Unexpected();
+        }
+        finally
+        {
+            _saving = false;
+        }
+    }
+
+    private void ToggleCreate()
+    {
+        _showCreate = !_showCreate;
+        _problem = null;
+    }
+
+    private async Task ChangePageAsync(int page)
+    {
+        _pageNumber = page;
+        await LoadAsync();
+    }
+}

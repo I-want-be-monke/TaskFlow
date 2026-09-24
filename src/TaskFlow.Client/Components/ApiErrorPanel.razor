@@ -1,0 +1,24 @@
+@using TaskFlow.Client.Ui
+
+@if (Problem is not null)
+{
+    <section class="alert alert-error" role="alert" data-testid="api-error">
+        <div>
+            <strong>@(Problem.IsVersionConflict ? "This record changed on the server." : "Request failed.")</strong>
+            <p>@Problem.Message</p>
+            <small>Code: @Problem.Code@if (!string.IsNullOrWhiteSpace(Problem.TraceId)) { <text> · Trace: @Problem.TraceId</text> }</small>
+        </div>
+        @if (Problem.IsVersionConflict && ReloadRequested.HasDelegate)
+        {
+            <button type="button" class="button button-secondary" @onclick="ReloadRequested">Reload latest</button>
+        }
+    </section>
+}
+
+@code {
+    [Parameter]
+    public UiProblemState? Problem { get; set; }
+
+    [Parameter]
+    public EventCallback ReloadRequested { get; set; }
+}

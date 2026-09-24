@@ -1,0 +1,78 @@
+@page "/auth/login"
+@inject AuthApiClient AuthApi
+@inject ApiAuthenticationStateProvider AuthState
+@inject NavigationManager Navigation
+
+<PageTitle>Login · TaskFlow</PageTitle>
+
+<section class="auth-card">
+    <div>
+        <p class="eyebrow">Welcome back</p>
+        <h1>Sign in</h1>
+        <p>Use your TaskFlow account. The browser session is stored only in the secure HttpOnly cookie managed by the API.</p>
+    </div>
+
+    <ApiErrorPanel Problem="@_problem" />
+
+    <EditForm Model="@_model" OnValidSubmit="SubmitAsync" FormName="login">
+        <DataAnnotationsValidator />
+        <ValidationSummary />
+
+        <label>
+            User name
+            <InputText class="input" autocomplete="username" @bind-Value="_model.UserName" />
+            <ValidationMessage For="@(() => _model.UserName)" />
+        </label>
+
+        <label>
+            Password
+            <InputText class="input" type="password" autocomplete="current-password" @bind-Value="_model.Password" />
+            <ValidationMessage For="@(() => _model.Password)" />
+        </label>
+
+        <button class="button button-primary" type="submit" disabled="@_submitting">
+            @(_submitting ? "Signing in…" : "Sign in")
+        </button>
+    </EditForm>
+
+    <p class="muted">No account yet? <a href="/auth/register">Create one</a>.</p>
+</section>
+
+@code {
+    private readonly LoginFormModel _model = new();
+    private UiProblemState? _problem;
+    private bool _submitting;
+
+    protected override void OnInitialized()
+    {
+        if (AuthState.CurrentUser is not null)
+        {
+            Navigation.NavigateTo("/projects", replace: true);
+        }
+    }
+
+    private async Task SubmitAsync()
+    {
+        _submitting = true;
+        _problem = null;
+
+        try
+        {
+            await AuthApi.LoginAsync(_model.UserName, _model.Password);
+            Navigation.NavigateTo("/projects", replace: true);
+        }
+        catch (ApiProblemException exception)
+        {
+            _problem = UiProblemState.From(exception);
+        }
+        catch (Exception)
+        {
+            _problem = UiProblemState.Unexpected();
+        }
+        finally
+        {
+            _submitting = false;
+            _model.Password = string.Empty;
+        }
+    }
+}

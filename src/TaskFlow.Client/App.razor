@@ -4,7 +4,7 @@
             <AuthorizeRouteView RouteData="@routeData" DefaultLayout="@typeof(MainLayout)">
                 <NotAuthorized>
                     <LayoutView Layout="@typeof(MainLayout)">
-                        <p>Authentication is required for this page.</p>
+                        <RedirectToLogin />
                     </LayoutView>
                 </NotAuthorized>
             </AuthorizeRouteView>
@@ -12,7 +12,11 @@
         </Found>
         <NotFound>
             <LayoutView Layout="@typeof(MainLayout)">
-                <h1>Not found</h1>
+                <section class="empty-state">
+                    <h1>Not found</h1>
+                    <p>The requested page does not exist.</p>
+                    <a class="button button-secondary" href="/">Go home</a>
+                </section>
             </LayoutView>
         </NotFound>
     </Router>

@@ -15,6 +15,25 @@ public sealed class TagsApiClient(ApiHttpClient api)
             $"/api/v1/tags?page={page}&pageSize={pageSize}",
             cancellationToken);
 
+    public async Task<IReadOnlyList<TagDto>> ListAllAsync(CancellationToken cancellationToken = default)
+    {
+        const int pageSize = 100;
+        PagedResponse<TagDto> first = await ListAsync(1, pageSize, cancellationToken);
+        if (first.TotalPages <= 1)
+        {
+            return first.Items;
+        }
+
+        var items = new List<TagDto>(first.Items);
+        for (int page = 2; page <= first.TotalPages; page++)
+        {
+            PagedResponse<TagDto> next = await ListAsync(page, pageSize, cancellationToken);
+            items.AddRange(next.Items);
+        }
+
+        return items;
+    }
+
     public Task<TagDto> GetAsync(Guid tagId, CancellationToken cancellationToken = default) =>
         _api.GetAsync<TagDto>($"/api/v1/tags/{tagId:D}", cancellationToken);
 

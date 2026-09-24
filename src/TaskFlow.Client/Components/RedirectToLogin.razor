@@ -1,0 +1,13 @@
+@inject NavigationManager Navigation
+
+<p>Authentication is required. Redirecting to sign in…</p>
+
+@code {
+    protected override void OnAfterRender(bool firstRender)
+    {
+        if (firstRender)
+        {
+            Navigation.NavigateTo("/auth/login", replace: true);
+        }
+    }
+}
