@@ -24,5 +24,6 @@
     <ProjectReference Include="../../src/TaskFlow.Infrastructure/TaskFlow.Infrastructure.csproj" />
     <ProjectReference Include="../../src/TaskFlow.Domain/TaskFlow.Domain.csproj" />
     <ProjectReference Include="../../src/TaskFlow.DbMigrator/TaskFlow.DbMigrator.csproj" />
+    <ProjectReference Include="../../src/TaskFlow.Client/TaskFlow.Client.csproj" />
   </ItemGroup>
 </Project>
