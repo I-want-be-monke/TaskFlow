@@ -1,40 +1,30 @@
-# TaskFlow — Stage 2
+# TaskFlow — Stage 3
 
-TaskFlow is being implemented stage-by-stage from the architecture contract. **Stages 0–2 are complete in this snapshot**: repository/build foundation, framework-independent Domain, and the Application Core contracts required before feature handlers are written.
+TaskFlow is being implemented stage-by-stage from the architecture contract. **Stages 0–3 are complete in this snapshot**: repository/build foundation, framework-independent Domain, Application Core contracts, and the complete Project use-case layer.
 
 ## What is ready
 
 - pinned .NET **10.0.401** / C# 14 build contract;
 - strict solution dependency direction and locked NuGet restore;
 - Domain entities/invariants from Stage 1;
-- typed `Result`, `Result<T>`, `Error`, `ErrorCode`, `ErrorType`;
-- all seven architectural application error categories;
-- shared pagination with `PageSize <= 100`;
-- `PagedResult<T>`;
-- `ICurrentActor`, `IUnitOfWork`, `ITransactionManager`;
-- owner-scoped Project/Task/Tag repository ports;
-- separate owner-scoped read/query ports;
-- Project/Task/Tag read models;
-- `TaskSearchQuery` with documented filters and a fixed sort whitelist;
-- no `IQueryable` exposed by Application;
-- no generic repository;
-- real xUnit v3 Application tests plus architecture guards;
-- Git history from Stages 0–2 preserved in `.git`.
+- typed Result/Error, pagination and owner-scoped persistence ports from Stage 2;
+- `CreateProject`, `GetProject`, `ListProjects`, `UpdateProject`, `ArchiveProject`, `RestoreProject`, `DeleteProject`;
+- one feature folder per use case with Command/Query + Validator + Handler;
+- owner is always derived from `ICurrentActor`, never from a client request;
+- foreign-owned Project lookup is indistinguishable from missing -> `NotFound`;
+- expected `Version` on update/archive/restore/delete with typed conflict result;
+- archive/restore expressed through transaction + `GetOwnedForUpdateAsync` ports;
+- injected `TimeProvider` for Project mutations;
+- no EF Core, ASP.NET Core, Npgsql, `HttpContext` or Infrastructure dependency in Application;
+- Project handler unit tests and architecture guards;
+- Git history from Stages 0–3 preserved in `.git`.
 
-## Important Stage 2 rules
-
-Application still depends only on Domain. It has no EF Core, ASP.NET Core, Npgsql, `HttpContext` or Infrastructure references.
-
-User-resource persistence interfaces deliberately expose `GetOwnedByIdAsync(ownerUserId, id, ct)` instead of an unsafe unscoped `GetById(id)`. `OwnerUserId` is not accepted by `TaskSearchQuery`; future handlers obtain it from `ICurrentActor`.
-
-Read paths return read models/`PagedResult<T>` rather than Domain entities or `IQueryable`.
-
-## Verify Stage 2
+## Verify Stage 3
 
 From the repository root:
 
 ```bash
-./scripts/verify-stage2.sh
+./scripts/verify-stage3.sh
 ```
 
 Equivalent core commands:
@@ -42,6 +32,7 @@ Equivalent core commands:
 ```bash
 python3 scripts/verify_project_references.py
 python3 scripts/verify_application_contracts.py
+python3 scripts/verify_project_features.py
 dotnet restore TaskFlow.sln --locked-mode
 dotnet build TaskFlow.sln --no-restore --configuration Release
 dotnet test TaskFlow.sln --no-build --no-restore --configuration Release
@@ -51,10 +42,12 @@ Expected result: locked restore succeeds, Release build has **0 warnings / 0 err
 
 ## Current boundary
 
-No feature handlers, EF Core, PostgreSQL repositories, HTTP endpoints or auth implementation have been added yet. Stage 3 can now implement Project use cases entirely against these Application contracts.
+Project use cases are complete at the Application layer. Tasks/Tags/TaskTag features, EF Core/PostgreSQL, real row locks/transactions, HTTP endpoints and auth are intentionally not implemented yet.
+
+The application-level version check added in Stage 3 is not a substitute for database optimistic concurrency. Stage 6 must still configure the `Version` concurrency token and map real write races to `Conflict`.
 
 ## Verification status of this archive
 
-Source/architecture checks, JSON/XML validation, Git consistency and archive integrity are executed while creating this snapshot. The generation container does not have the .NET SDK installed and cannot resolve external hosts directly, so the final `dotnet restore/build/test` execution cannot be claimed here. The pinned SDK remains `10.0.401`, and `scripts/verify-stage2.sh` contains the exact reproducible verification sequence.
+Source/architecture checks, JSON/XML validation, Git consistency and archive integrity are executed while creating this snapshot. The generation container does not have the .NET SDK installed and cannot resolve external hosts directly, so the final `dotnet restore/build/test` execution cannot be claimed here. `scripts/verify-stage3.sh` contains the exact reproducible verification sequence for a machine with the pinned SDK.
 
-Detailed decisions: [`docs/STAGE_2_RATIONALE.md`](docs/STAGE_2_RATIONALE.md). Previous stages: [`docs/STAGE_0_RATIONALE.md`](docs/STAGE_0_RATIONALE.md), [`docs/STAGE_1_RATIONALE.md`](docs/STAGE_1_RATIONALE.md).
+Detailed decisions: [`docs/STAGE_3_RATIONALE.md`](docs/STAGE_3_RATIONALE.md). Previous stages remain documented in `docs/STAGE_0_RATIONALE.md`, `docs/STAGE_1_RATIONALE.md`, and `docs/STAGE_2_RATIONALE.md`.
