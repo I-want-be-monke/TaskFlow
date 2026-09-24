@@ -1,230 +1,184 @@
-# TaskFlow — Stage 15
+# TaskFlow — Stage 16 / v1 Definition of Done
 
-TaskFlow реализуется по архитектурным этапам. **Stages 0–15 завершены в этом snapshot**: backend, PostgreSQL, security, observability, DbMigrator, Blazor WASM CRUD UI, production-like Docker topology и теперь автоматические CI quality gates.
+TaskFlow реализован по архитектурным этапам **0–16**. Этот snapshot завершает v1: backend, PostgreSQL, security, concurrency, observability, отдельный DbMigrator, Blazor WASM CRUD UI, production-like Docker topology, CI quality gates и финальный browser E2E / Definition of Done.
 
-## Что добавлено на Stage 15
+## Что добавлено на Stage 16
 
-- `.github/workflows/ci.yml`;
-- GitHub Actions jobs `quality`, `integration_p0`, `supply_chain`, `containers`;
-- locked NuGet restore и Release build с analyzers/warnings-as-errors;
-- Domain/Application unit tests;
-- полный PostgreSQL/Testcontainers integration suite;
-- P0 security/concurrency/migration gate;
-- NuGet vulnerability gate;
-- Gitleaks scan всей Git history;
-- Trivy scan всех трёх TaskFlow images;
-- container smoke + HTTPS same-origin E2E smoke;
-- immutable SHA pinning GitHub Actions;
-- Dependabot для GitHub Actions и NuGet;
-- CI/security reports как краткоживущие artifacts;
-- `scripts/verify_ci_stage15.py`, `verify-static-stage15.sh`, `verify-stage15.sh`.
+- `scripts/final_browser_e2e.py` — настоящий Playwright/Chromium E2E;
+- обязательный UI flow Register/Login → Project/Task/Tag CRUD → archive/restore → cleanup/logout;
+- runtime BOLA `404` и CSRF `400` probes;
+- browser `409 version_conflict` + `Reload latest` UX;
+- server-side archived Project mutation block check;
+- API restart + сохранение cookie-session/business data/pre-restart antiforgery;
+- health live/ready runtime checks;
+- runtime PostgreSQL least-privilege probe;
+- real-value container log redaction check;
+- `scripts/verify_final_stage16.py`;
+- `scripts/verify-static-stage16.sh` и `scripts/verify-stage16.sh`;
+- CI теперь запускает final architecture guard + pinned Playwright `1.63.0` browser E2E;
+- `docs/STAGE_16_DOD.md` — финальная матрица DoD;
+- `docs/STAGE_16_RATIONALE.md` — rationale финального этапа;
+- `Отчёт.md` — корневой отчёт для сдачи.
 
-## CI pipeline
+## Финальный browser flow
+
+```text
+Register
+-> Logout
+-> Login
+-> Create Project
+-> Edit Project
+-> Create Task
+-> Edit Task
+-> Create Tag
+-> Attach Tag to Task
+-> Filter/List Tasks
+-> page refresh restores session
+-> BOLA foreign UUID -> 404
+-> unsafe request without CSRF -> 400
+-> stale Project version -> 409 + Reload latest
+-> Archive Project
+-> Task mutation blocked
+-> Restore Project
+-> restart API
+-> same session + data + antiforgery remain valid
+-> health + DB least privilege + log redaction
+-> Delete Task
+-> Delete Tag
+-> Delete Project
+-> Logout
+```
+
+## Финальный CI pipeline
 
 ```text
 quality
-  locked restore
+  restore --locked-mode
   -> Release build + analyzers
-  -> architecture/source guards
-  -> Domain tests
-  -> Application tests
+  -> Stages 0–16 architecture guards
+  -> Domain/Application unit tests
 
 integration_p0
-  locked restore + build
   -> full PostgreSQL IntegrationTests
-     including security/concurrency/migrations
+     auth/CSRF/BOLA/multi-replica
+     concurrency/deadlock
+     schema/migrations/least privilege
+     logging/client contracts
 
 supply_chain
-  locked restore
-  -> NuGet known-vulnerability gate
+  -> NuGet vulnerability gate
   -> full-history Gitleaks
 
 quality + integration_p0 + supply_chain GREEN
   -> containers
-     compose build/start
+     Compose build/start
      -> Trivy
-     -> container session/restart smoke
-     -> HTTPS frontend/API E2E smoke
+     -> restart/session container smoke
+     -> same-origin edge smoke
+     -> Playwright Chromium final browser E2E
 ```
 
-Container job не выполняется, пока предыдущие обязательные gates не завершились успешно.
+Все обязательные gates fail-closed. `continue-on-error` для release-critical проверок не используется.
 
-## CI triggers
-
-Pipeline запускается для:
+## Production-like topology
 
 ```text
-push -> main
-pull_request
-workflow_dispatch
+Browser
+  -> https://localhost:8443 (NGINX + Blazor WASM)
+       -> /api/*
+            -> TaskFlow.Api
+                 -> PostgreSQL
+
+TaskFlow.DbMigrator -> PostgreSQL before API rollout
 ```
 
-Default `GITHUB_TOKEN` получает только:
+API/PostgreSQL host ports наружу не публикуются. Browser authentication использует secure HttpOnly `__Host-TaskFlow.Auth`; Data Protection keys находятся в PostgreSQL, поэтому API не требует sticky session.
 
-```text
-contents: read
-```
+## Быстрый запуск
 
-Checkout credentials не сохраняются в security/container jobs. Actions закреплены полными commit SHA, а не mutable major tags.
-
-## Quality gates
-
-### Build
+Требуются Git и Docker Compose v2:
 
 ```bash
-dotnet restore TaskFlow.sln --locked-mode
-dotnet build TaskFlow.sln --no-restore --configuration Release
+./scripts/compose-up.sh
 ```
 
-`Directory.Build.props` уже содержит `TreatWarningsAsErrors=true`, analyzers и code-style enforcement, поэтому warning/analyzer regression ломает CI.
-
-### Tests
-
-Unit:
+Открыть:
 
 ```text
-TaskFlow.Domain.Tests
-TaskFlow.Application.Tests
+https://localhost:8443/
 ```
 
-Integration/P0:
+Development certificate self-signed и создаётся при старте frontend container в `/tmp`.
 
-```text
-TaskFlow.IntegrationTests
-```
-
-Этот suite физически содержит, среди прочего:
-
-```text
-AuthSecurityTests
-ConcurrencyTests
-DbMigratorTests
-PostgresSchemaTests
-```
-
-То есть owner/BOLA/CSRF, concurrency races, empty-DB migrations и PostgreSQL schema contract входят в обязательный gate.
-
-## Dependency vulnerability policy
-
-`check_nuget_vulnerabilities.py` использует .NET 10 machine-readable command:
+Остановить:
 
 ```bash
-dotnet package list \
-  --project TaskFlow.sln \
-  --include-transitive \
-  --vulnerable \
-  --format json
+./scripts/compose-down.sh
 ```
 
-**Policy:** любая известная NuGet vulnerability в direct или transitive dependency блокирует CI.
-
-Отчёт сохраняется в:
-
-```text
-artifacts/nuget-vulnerabilities.json
-```
-
-## Secret scan
-
-Используется pinned official image:
-
-```text
-zricethezav/gitleaks:v8.30.1
-```
-
-Scan выполняется по полной Git history (`fetch-depth: 0`) и использует `--redact`, чтобы найденное secret value не попадало в CI output.
-
-## Container scanning policy
-
-Используется:
-
-```text
-aquasec/trivy:0.70.0
-```
-
-Сканируются:
-
-```text
-taskflow-api:<commit-sha>
-taskflow-migrator:<commit-sha>
-taskflow-frontend:<commit-sha>
-```
-
-Policy:
-
-```text
-HIGH + CRITICAL -> всегда записываются в JSON report
-fixable CRITICAL -> blocking CI failure
-unfixed CRITICAL -> report, но не блокирует release gate автоматически
-```
-
-Это делает исключение явным и воспроизводимым вместо ручного игнорирования отдельных CVE в workflow.
-
-## Container + E2E gates
-
-CI использует тот же Stage 14 production-like stack:
-
-```text
-PostgreSQL
--> DbMigrator
--> API
--> HTTPS frontend reverse proxy
-```
-
-`scripts/compose-smoke.sh` проверяет auth/antiforgery/CRUD, restart API, сохранение session и business data.
-
-`scripts/ci_e2e_smoke.py` дополнительно проверяет browser-facing boundary:
-
-```text
-/
-/auth/login
-/auth/register
-/projects
-/tags
-```
-
-каждый route должен отдать Blazor SPA shell, а `/api/v1/auth/antiforgery` должен быть доступен через тот же HTTPS origin.
-
-Полный browser CRUD E2E остаётся Stage 16; Stage 15 проверяет, что CI уже не может пропустить сломанный deployable stack.
-
-## Reports
-
-GitHub Actions сохраняет на 14 дней:
-
-```text
-supply-chain-reports
-container-reports
-```
-
-Локальный `artifacts/` gitignored и не является application state.
-
-## Dependabot
-
-`.github/dependabot.yml` еженедельно проверяет:
-
-```text
-GitHub Actions
-NuGet
-```
-
-Обновление версии всё равно должно пройти тот же CI перед merge.
-
-## Локальная проверка Stage 15
-
-Только architecture/source contract:
+Удалить также PostgreSQL volume:
 
 ```bash
-./scripts/verify-static-stage15.sh
+./scripts/compose-down.sh --volumes
 ```
 
-Полный gate на машине с .NET SDK 10.0.401 и Docker:
+## Финальная проверка
+
+Только source/architecture/DoD contract:
 
 ```bash
-./scripts/verify-stage15.sh
+./scripts/verify-static-stage16.sh
 ```
 
-Он выполняет restore/build/tests, dependency + secret scan, production-like containers, image scan, container smoke и E2E smoke.
+Полный Definition of Done на машине с .NET SDK `10.0.401`, Docker и Python 3:
 
-## Что намеренно остаётся Stage 16
+```bash
+python3 -m pip install playwright==1.63.0
+python3 -m playwright install --with-deps chromium
+./scripts/verify-stage16.sh
+```
 
-Stage 15 не дублирует финальный Definition of Done. Следующий этап добавляет полный browser E2E пользовательского CRUD flow и финальную сквозную проверку security/concurrency/12-factor перед сдачей.
+`verify-stage16.sh` выполняет:
+
+```text
+Stages 0–16 static guards
+-> locked restore
+-> Release build
+-> Domain tests
+-> Application tests
+-> full PostgreSQL IntegrationTests
+-> clean-volume production-like Compose startup
+-> Stage 14 container smoke
+-> edge smoke
+-> final Playwright browser E2E
+```
+
+## Ключевые архитектурные границы v1
+
+```text
+Domain          -> nothing
+Application     -> Domain
+Infrastructure  -> Application + Domain
+Api             -> Application + Infrastructure
+DbMigrator      -> Infrastructure
+Client          -> Blazor/BCL + own API contracts only
+```
+
+Дополнительно:
+
+- один `TaskFlowDbContext` владеет Identity + business + Data Protection schema;
+- owner-scoped access для user resources;
+- Project-first row lock protocol;
+- `Version` optimistic concurrency;
+- cookie auth + antiforgery;
+- API startup не выполняет migrations;
+- browser не хранит bearer/refresh tokens;
+- structured JSON logs только stdout/stderr;
+- PostgreSQL integration tests, SQLite не используется.
+
+## Финальные документы
+
+- `Отчёт.md` — итоговый отчёт для сдачи;
+- `docs/STAGE_16_DOD.md` — матрица Definition of Done;
+- `docs/STAGE_16_RATIONALE.md` — решения финального этапа;
+- `docs/STAGE_0_RATIONALE.md` … `docs/STAGE_15_RATIONALE.md` — история реализации по этапам.
