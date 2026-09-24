@@ -1,129 +1,148 @@
-# TaskFlow — Stage 14
+# TaskFlow — Stage 15
 
-TaskFlow реализуется по архитектурным этапам. **Stages 0–14 завершены в этом snapshot**: backend, PostgreSQL, security, observability, one-shot DbMigrator, Blazor WASM CRUD UI и production-like container topology.
+TaskFlow реализуется по архитектурным этапам. **Stages 0–15 завершены в этом snapshot**: backend, PostgreSQL, security, observability, DbMigrator, Blazor WASM CRUD UI, production-like Docker topology и теперь автоматические CI quality gates.
 
-## Что добавлено на Stage 14
+## Что добавлено на Stage 15
 
-- `src/TaskFlow.Api/Dockerfile`;
-- `src/TaskFlow.DbMigrator/Dockerfile`;
-- `src/TaskFlow.Client/Dockerfile`;
-- unprivileged NGINX для Blazor static files + reverse proxy;
-- HTTPS browser endpoint с runtime-generated self-signed certificate;
-- PostgreSQL 18 compose service + persistent volume;
-- automatic bootstrap ролей `taskflow_app` / `taskflow_migrator`;
-- startup order `PostgreSQL -> DbMigrator -> API -> Frontend`;
-- read-only root filesystem для API/migrator/frontend;
-- generated local secrets вне Git/image layers;
-- commit-SHA image tags;
-- container smoke flow с API restart/session/antiforgery/data persistence;
-- `scripts/verify_containers_stage14.py` и `scripts/verify-stage14.sh`.
+- `.github/workflows/ci.yml`;
+- GitHub Actions jobs `quality`, `integration_p0`, `supply_chain`, `containers`;
+- locked NuGet restore и Release build с analyzers/warnings-as-errors;
+- Domain/Application unit tests;
+- полный PostgreSQL/Testcontainers integration suite;
+- P0 security/concurrency/migration gate;
+- NuGet vulnerability gate;
+- Gitleaks scan всей Git history;
+- Trivy scan всех трёх TaskFlow images;
+- container smoke + HTTPS same-origin E2E smoke;
+- immutable SHA pinning GitHub Actions;
+- Dependabot для GitHub Actions и NuGet;
+- CI/security reports как краткоживущие artifacts;
+- `scripts/verify_ci_stage15.py`, `verify-static-stage15.sh`, `verify-stage15.sh`.
 
-## Production-like topology
-
-```text
-Browser
-  |
-  | HTTPS :8443
-  v
-TaskFlow.Frontend (NGINX + Blazor WASM)
-  |
-  | /api/*
-  v
-TaskFlow.Api :8080 (internal only)
-  |
-  v
-PostgreSQL
-
-TaskFlow.DbMigrator
-  -> PostgreSQL
-  -> exits before API starts
-```
-
-Host ports для PostgreSQL и API не публикуются. Browser traffic входит только через frontend reverse proxy, поэтому frontend и API работают same-origin.
-
-## Быстрый запуск
-
-Нужны:
+## CI pipeline
 
 ```text
-Docker Engine / Docker Desktop
-Docker Compose v2
-Git
-Python 3
+quality
+  locked restore
+  -> Release build + analyzers
+  -> architecture/source guards
+  -> Domain tests
+  -> Application tests
+
+integration_p0
+  locked restore + build
+  -> full PostgreSQL IntegrationTests
+     including security/concurrency/migrations
+
+supply_chain
+  locked restore
+  -> NuGet known-vulnerability gate
+  -> full-history Gitleaks
+
+quality + integration_p0 + supply_chain GREEN
+  -> containers
+     compose build/start
+     -> Trivy
+     -> container session/restart smoke
+     -> HTTPS frontend/API E2E smoke
 ```
 
-Из чистого committed checkout:
+Container job не выполняется, пока предыдущие обязательные gates не завершились успешно.
+
+## CI triggers
+
+Pipeline запускается для:
+
+```text
+push -> main
+pull_request
+workflow_dispatch
+```
+
+Default `GITHUB_TOKEN` получает только:
+
+```text
+contents: read
+```
+
+Checkout credentials не сохраняются в security/container jobs. Actions закреплены полными commit SHA, а не mutable major tags.
+
+## Quality gates
+
+### Build
 
 ```bash
-./scripts/compose-up.sh
+dotnet restore TaskFlow.sln --locked-mode
+dotnet build TaskFlow.sln --no-restore --configuration Release
 ```
 
-Скрипт:
+`Directory.Build.props` уже содержит `TreatWarningsAsErrors=true`, analyzers и code-style enforcement, поэтому warning/analyzer regression ломает CI.
 
-1. требует clean Git worktree;
-2. создаёт `.env.compose.local` со случайными локальными passwords;
-3. тегирует TaskFlow images полным текущим Git commit SHA;
-4. валидирует Compose interpolation;
-5. собирает и запускает stack;
-6. ждёт доступности frontend/API.
+### Tests
 
-Открыть:
+Unit:
 
 ```text
-https://localhost:8443/
+TaskFlow.Domain.Tests
+TaskFlow.Application.Tests
 ```
 
-Локальный certificate self-signed и создаётся при старте frontend container. Для development stack нужно принять browser warning. Certificate/private key не находятся в Git или image layers.
-
-## Startup order
-
-Compose кодирует:
+Integration/P0:
 
 ```text
-PostgreSQL healthcheck
--> TaskFlow.DbMigrator exits 0
--> API starts and passes /health/live
--> Frontend starts
+TaskFlow.IntegrationTests
 ```
 
-`TaskFlow.Api` по-прежнему не вызывает `Migrate`, `MigrateAsync` или `EnsureCreated` при startup.
-
-## Database least privilege
-
-При первом init пустого volume создаются две application roles:
+Этот suite физически содержит, среди прочего:
 
 ```text
-taskflow_app
-  SELECT / INSERT / UPDATE / DELETE
-  no schema CREATE
-
-taskflow_migrator
-  schema USAGE / CREATE
-  migration owner
+AuthSecurityTests
+ConcurrencyTests
+DbMigratorTests
+PostgresSchemaTests
 ```
 
-Runtime passwords автоматически генерируются в gitignored `.env.compose.local`. Они не передаются как Docker build args и не попадают в images.
+То есть owner/BOLA/CSRF, concurrency races, empty-DB migrations и PostgreSQL schema contract входят в обязательный gate.
 
-API и migrator используют один configuration key:
+## Dependency vulnerability policy
+
+`check_nuget_vulnerabilities.py` использует .NET 10 machine-readable command:
+
+```bash
+dotnet package list \
+  --project TaskFlow.sln \
+  --include-transitive \
+  --vulnerable \
+  --format json
+```
+
+**Policy:** любая известная NuGet vulnerability в direct или transitive dependency блокирует CI.
+
+Отчёт сохраняется в:
 
 ```text
-ConnectionStrings__Postgres
+artifacts/nuget-vulnerabilities.json
 ```
 
-но получают разные credentials.
+## Secret scan
 
-## Images
-
-Pinned bases:
+Используется pinned official image:
 
 ```text
-SDK                 mcr.microsoft.com/dotnet/sdk:10.0.401
-ASP.NET runtime      mcr.microsoft.com/dotnet/aspnet:10.0.12
-PostgreSQL           postgres:18.6-alpine3.24
-Frontend runtime     nginxinc/nginx-unprivileged:1.31.6-alpine3.24
+zricethezav/gitleaks:v8.30.1
 ```
 
-TaskFlow release images:
+Scan выполняется по полной Git history (`fetch-depth: 0`) и использует `--redact`, чтобы найденное secret value не попадало в CI output.
+
+## Container scanning policy
+
+Используется:
+
+```text
+aquasec/trivy:0.70.0
+```
+
+Сканируются:
 
 ```text
 taskflow-api:<commit-sha>
@@ -131,112 +150,81 @@ taskflow-migrator:<commit-sha>
 taskflow-frontend:<commit-sha>
 ```
 
-`latest` не используется как release identity.
-
-## Runtime hardening
-
-API, migrator и frontend используют:
+Policy:
 
 ```text
-non-root USER
-read_only root filesystem
-tmpfs только для ephemeral /tmp
-cap_drop: ALL
-no-new-privileges
-runtime image без .NET SDK
+HIGH + CRITICAL -> всегда записываются в JSON report
+fixable CRITICAL -> blocking CI failure
+unfixed CRITICAL -> report, но не блокирует release gate автоматически
 ```
 
-PostgreSQL — единственный stateful service и использует named volume `taskflow-postgres`.
+Это делает исключение явным и воспроизводимым вместо ручного игнорирования отдельных CVE в workflow.
 
-## Same-origin reverse proxy
+## Container + E2E gates
 
-Blazor продолжает использовать `builder.HostEnvironment.BaseAddress` и относительный `/api/v1/...`.
-
-NGINX:
-
-- раздаёт Blazor assets;
-- делает SPA fallback на `index.html`;
-- proxy `/api/*` в internal `api:8080`;
-- передаёт `X-Forwarded-For` и `X-Forwarded-Proto`;
-- является exact trusted proxy для API;
-- не публикует API `/health/*` наружу;
-- пишет JSON access events в stdout без query string/cookies/request body.
-
-CSP разрешает только same-origin resources и `wasm-unsafe-eval`, необходимый для client-side Blazor WebAssembly.
-
-## API replicas
-
-API не имеет `container_name`, local session store или local Data Protection key directory. Business state и Data Protection keys находятся в PostgreSQL.
-
-Можно поднять дополнительную replica:
-
-```bash
-docker compose --env-file .env.compose.local up --scale api=2 -d
-```
-
-Sticky session приложению не требуется.
-
-## Container smoke
-
-После запуска:
-
-```bash
-./scripts/compose-smoke.sh
-```
-
-Сценарий:
+CI использует тот же Stage 14 production-like stack:
 
 ```text
-HTTPS + antiforgery bootstrap
--> Register
--> Create Project
--> Get Project
--> сохранить antiforgery token
--> restart API
--> /auth/me работает с прежней cookie
--> Project не потерян
--> старый antiforgery token принимается для Project update
--> authenticated /health/ready succeeds
--> Delete Project
--> Logout
+PostgreSQL
+-> DbMigrator
+-> API
+-> HTTPS frontend reverse proxy
 ```
 
-Для проверки с полностью пустым PostgreSQL volume:
+`scripts/compose-smoke.sh` проверяет auth/antiforgery/CRUD, restart API, сохранение session и business data.
 
-```bash
-./scripts/compose-down.sh --volumes
-./scripts/compose-up.sh
-./scripts/compose-smoke.sh
-```
-
-## Остановка
-
-Сохранить БД volume:
-
-```bash
-./scripts/compose-down.sh
-```
-
-Удалить stack и DB volume:
-
-```bash
-./scripts/compose-down.sh --volumes
-```
-
-## Полная проверка Stage 14
-
-```bash
-./scripts/verify-stage14.sh
-```
-
-Static часть проверяет Stages 0–14. На машине с .NET SDK `10.0.401` и Docker затем выполняются locked restore, Release build, xUnit/Testcontainers suite, container build/start и smoke flow.
-
-## Документы
+`scripts/ci_e2e_smoke.py` дополнительно проверяет browser-facing boundary:
 
 ```text
-docs/STAGE_14_RATIONALE.md
+/
+/auth/login
+/auth/register
+/projects
+/tags
 ```
 
-## Следующий этап
+каждый route должен отдать Blazor SPA shell, а `/api/v1/auth/antiforgery` должен быть доступен через тот же HTTPS origin.
 
-Stage 15 — CI pipeline и quality gates: locked restore, analyzers/tests, vulnerability/secret/container scans, container smoke и E2E gates.
+Полный browser CRUD E2E остаётся Stage 16; Stage 15 проверяет, что CI уже не может пропустить сломанный deployable stack.
+
+## Reports
+
+GitHub Actions сохраняет на 14 дней:
+
+```text
+supply-chain-reports
+container-reports
+```
+
+Локальный `artifacts/` gitignored и не является application state.
+
+## Dependabot
+
+`.github/dependabot.yml` еженедельно проверяет:
+
+```text
+GitHub Actions
+NuGet
+```
+
+Обновление версии всё равно должно пройти тот же CI перед merge.
+
+## Локальная проверка Stage 15
+
+Только architecture/source contract:
+
+```bash
+./scripts/verify-static-stage15.sh
+```
+
+Полный gate на машине с .NET SDK 10.0.401 и Docker:
+
+```bash
+./scripts/verify-stage15.sh
+```
+
+Он выполняет restore/build/tests, dependency + secret scan, production-like containers, image scan, container smoke и E2E smoke.
+
+## Что намеренно остаётся Stage 16
+
+Stage 15 не дублирует финальный Definition of Done. Следующий этап добавляет полный browser E2E пользовательского CRUD flow и финальную сквозную проверку security/concurrency/12-factor перед сдачей.
