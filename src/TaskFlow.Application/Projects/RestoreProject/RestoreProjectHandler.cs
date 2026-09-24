@@ -52,7 +52,11 @@ public sealed class RestoreProjectHandler(
                 }
 
                 project.Restore(timeProvider.GetUtcNow());
-                await unitOfWork.SaveChangesAsync(transactionCancellationToken);
+                Result saveResult = await unitOfWork.SaveChangesAsync(transactionCancellationToken);
+                if (saveResult.IsFailure)
+                {
+                    return Result.Failure<ProjectReadModel>(saveResult.Error!);
+                }
 
                 return Result.Success(project.ToReadModel());
             },

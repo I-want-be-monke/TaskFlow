@@ -54,7 +54,11 @@ public sealed class UpdateTagHandler(
         }
 
         tag.Rename(command.Name, timeProvider.GetUtcNow());
-        await unitOfWork.SaveChangesAsync(cancellationToken);
+        Result saveResult = await unitOfWork.SaveChangesAsync(cancellationToken);
+        if (saveResult.IsFailure)
+        {
+            return Result.Failure<TagReadModel>(saveResult.Error!);
+        }
         return Result.Success(tag.ToReadModel());
     }
 }

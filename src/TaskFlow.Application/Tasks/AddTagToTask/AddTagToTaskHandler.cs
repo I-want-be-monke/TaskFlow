@@ -93,7 +93,11 @@ public sealed class AddTagToTaskHandler(
 
                 TaskTag relation = TaskTag.Create(task.Id, tag.Id, timeProvider.GetUtcNow());
                 await taskRepository.AddTagAsync(relation, transactionCancellationToken);
-                await unitOfWork.SaveChangesAsync(transactionCancellationToken);
+                Result saveResult = await unitOfWork.SaveChangesAsync(transactionCancellationToken);
+                if (saveResult.IsFailure)
+                {
+                    return saveResult;
+                }
                 return Result.Success();
             },
             cancellationToken);

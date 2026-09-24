@@ -41,7 +41,11 @@ public sealed class DeleteTagHandler(
         }
 
         tagRepository.Remove(tag);
-        await unitOfWork.SaveChangesAsync(cancellationToken);
+        Result saveResult = await unitOfWork.SaveChangesAsync(cancellationToken);
+        if (saveResult.IsFailure)
+        {
+            return saveResult;
+        }
         return Result.Success();
     }
 }

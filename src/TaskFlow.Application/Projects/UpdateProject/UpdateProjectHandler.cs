@@ -43,7 +43,11 @@ public sealed class UpdateProjectHandler(
         }
 
         project.UpdateDetails(command.Name, command.Description, timeProvider.GetUtcNow());
-        await unitOfWork.SaveChangesAsync(cancellationToken);
+        Result saveResult = await unitOfWork.SaveChangesAsync(cancellationToken);
+        if (saveResult.IsFailure)
+        {
+            return Result.Failure<ProjectReadModel>(saveResult.Error!);
+        }
 
         return Result.Success(project.ToReadModel());
     }

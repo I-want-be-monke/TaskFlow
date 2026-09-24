@@ -72,7 +72,11 @@ public sealed class DeleteTaskHandler(
                 }
 
                 taskRepository.Remove(task);
-                await unitOfWork.SaveChangesAsync(transactionCancellationToken);
+                Result saveResult = await unitOfWork.SaveChangesAsync(transactionCancellationToken);
+                if (saveResult.IsFailure)
+                {
+                    return saveResult;
+                }
                 return Result.Success();
             },
             cancellationToken);

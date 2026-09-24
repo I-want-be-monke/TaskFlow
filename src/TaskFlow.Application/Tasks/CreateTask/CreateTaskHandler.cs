@@ -58,7 +58,11 @@ public sealed class CreateTaskHandler(
                     timeProvider.GetUtcNow());
 
                 await taskRepository.AddAsync(task, transactionCancellationToken);
-                await unitOfWork.SaveChangesAsync(transactionCancellationToken);
+                Result saveResult = await unitOfWork.SaveChangesAsync(transactionCancellationToken);
+                if (saveResult.IsFailure)
+                {
+                    return Result.Failure<TaskReadModel>(saveResult.Error!);
+                }
 
                 return Result.Success(task.ToReadModel());
             },

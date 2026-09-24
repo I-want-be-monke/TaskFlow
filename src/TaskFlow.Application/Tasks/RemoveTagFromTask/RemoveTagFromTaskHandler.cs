@@ -91,7 +91,11 @@ public sealed class RemoveTagFromTaskHandler(
                 }
 
                 taskRepository.RemoveTag(relation);
-                await unitOfWork.SaveChangesAsync(transactionCancellationToken);
+                Result saveResult = await unitOfWork.SaveChangesAsync(transactionCancellationToken);
+                if (saveResult.IsFailure)
+                {
+                    return saveResult;
+                }
                 return Result.Success();
             },
             cancellationToken);

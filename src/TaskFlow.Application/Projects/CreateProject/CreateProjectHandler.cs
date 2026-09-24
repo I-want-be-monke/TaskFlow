@@ -34,7 +34,11 @@ public sealed class CreateProjectHandler(
             timeProvider.GetUtcNow());
 
         await projectRepository.AddAsync(project, cancellationToken);
-        await unitOfWork.SaveChangesAsync(cancellationToken);
+        Result saveResult = await unitOfWork.SaveChangesAsync(cancellationToken);
+        if (saveResult.IsFailure)
+        {
+            return Result.Failure<ProjectReadModel>(saveResult.Error!);
+        }
 
         return Result.Success(project.ToReadModel());
     }

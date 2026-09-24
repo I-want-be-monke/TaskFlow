@@ -81,7 +81,11 @@ public sealed class UpdateTaskHandler(
                     command.DueAt,
                     timeProvider.GetUtcNow());
 
-                await unitOfWork.SaveChangesAsync(transactionCancellationToken);
+                Result saveResult = await unitOfWork.SaveChangesAsync(transactionCancellationToken);
+                if (saveResult.IsFailure)
+                {
+                    return Result.Failure<TaskReadModel>(saveResult.Error!);
+                }
                 return Result.Success(task.ToReadModel());
             },
             cancellationToken);
