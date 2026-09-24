@@ -32,18 +32,18 @@
           "Docker.DotNet.Enhanced.Handler.Abstractions": "4.3.3"
         }
       },
-      "Docker.DotNet.Enhanced.NPipe": {
-        "type": "Transitive",
-        "resolved": "4.3.3",
-        "contentHash": "ZTLYufuEfY0e6qLOgeH9QgXx2KYuoABRVaY5A8rsggyLgYqbDj9rCRfVAhHPCUv83S7pVxDHy+Tvm/BnxjWVpg==",
-        "dependencies": {
-          "Docker.DotNet.Enhanced.Handler.Abstractions": "4.3.3"
-        }
-      },
       "Docker.DotNet.Enhanced.NativeHttp": {
         "type": "Transitive",
         "resolved": "4.3.3",
         "contentHash": "iNzK+jRFeEMobSA7l/h4ARwCKOOefOWtVN5/RB0ft6/6H6IQXvVUuOgGyZAjYLBT7TsyClRYno2B904f3dtBuQ==",
+        "dependencies": {
+          "Docker.DotNet.Enhanced.Handler.Abstractions": "4.3.3"
+        }
+      },
+      "Docker.DotNet.Enhanced.NPipe": {
+        "type": "Transitive",
+        "resolved": "4.3.3",
+        "contentHash": "ZTLYufuEfY0e6qLOgeH9QgXx2KYuoABRVaY5A8rsggyLgYqbDj9rCRfVAhHPCUv83S7pVxDHy+Tvm/BnxjWVpg==",
         "dependencies": {
           "Docker.DotNet.Enhanced.Handler.Abstractions": "4.3.3"
         }
@@ -551,6 +551,11 @@
           "Npgsql": "10.0.3"
         }
       },
+      "SharpZipLib": {
+        "type": "Transitive",
+        "resolved": "1.4.2",
+        "contentHash": "yjj+3zgz8zgXpiiC3ZdF/iyTBbz2fFvMxZFEBPUcwZjIvXOf37Ylm+K58hqMfIBt5JgU/Z2uoUS67JmTLe973A=="
+      },
       "SSH.NET": {
         "type": "Transitive",
         "resolved": "2026.0.0",
@@ -558,11 +563,6 @@
         "dependencies": {
           "BouncyCastle.Cryptography": "2.7.0"
         }
-      },
-      "SharpZipLib": {
-        "type": "Transitive",
-        "resolved": "1.4.2",
-        "contentHash": "yjj+3zgz8zgXpiiC3ZdF/iyTBbz2fFvMxZFEBPUcwZjIvXOf37Ylm+K58hqMfIBt5JgU/Z2uoUS67JmTLe973A=="
       },
       "System.Diagnostics.EventLog": {
         "type": "Transitive",
@@ -598,6 +598,12 @@
         "type": "Project",
         "dependencies": {
           "TaskFlow.Domain": "[1.0.0, )"
+        }
+      },
+      "TaskFlow.DbMigrator": {
+        "type": "Project",
+        "dependencies": {
+          "TaskFlow.Infrastructure": "[1.0.0, )"
         }
       },
       "TaskFlow.Domain": {

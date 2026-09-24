@@ -151,7 +151,7 @@ require("LogError(exception" not in uow, "absorbed DB failures must not log pote
 health = read(API / "Health" / "PostgresReadinessHealthCheck.cs")
 require("TaskFlowLogEvents.DatabaseUnavailable" in health, "readiness DB failure must use structured persistence event")
 
-migrator = read(MIGRATOR / "Program.cs")
+migrator = "\n".join(path.read_text(encoding="utf-8") for path in sorted(MIGRATOR.glob("*.cs")))
 for token in ["AddTaskFlowJsonConsole", 'serviceName: "TaskFlow.DbMigrator"', "operation_id", "ApplicationStarted"]:
     require(token in migrator, f"DbMigrator must use the shared log schema: missing {token}")
 require("Console.WriteLine" not in migrator and "Console.Error" not in migrator,
