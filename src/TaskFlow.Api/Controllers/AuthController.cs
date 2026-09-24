@@ -2,8 +2,12 @@ using Microsoft.AspNetCore.Antiforgery;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
+using Microsoft.Extensions.Options;
+using TaskFlow.Api.Configuration;
 using TaskFlow.Api.Contracts.Auth;
 using TaskFlow.Api.Errors;
+using TaskFlow.Api.RateLimiting;
 using TaskFlow.Application.Common.Errors;
 using TaskFlow.Infrastructure.Identity;
 
@@ -15,7 +19,8 @@ public sealed class AuthController(
     IAntiforgery antiforgery,
     UserManager<ApplicationUser> userManager,
     SignInManager<ApplicationUser> signInManager,
-    TimeProvider timeProvider) : ControllerBase
+    TimeProvider timeProvider,
+    IOptions<AuthOptions> authOptions) : ControllerBase
 {
     [AllowAnonymous]
     [HttpGet("antiforgery")]
@@ -32,6 +37,7 @@ public sealed class AuthController(
     }
 
     [AllowAnonymous]
+    [EnableRateLimiting(RateLimitPolicies.Authentication)]
     [HttpPost("register")]
     [ProducesResponseType(typeof(AuthUserResponse), StatusCodes.Status201Created)]
     public async Task<ActionResult<AuthUserResponse>> Register(
@@ -39,6 +45,14 @@ public sealed class AuthController(
         CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
+
+        if (!authOptions.Value.AllowRegistration)
+        {
+            return this.ToProblem(new Error(
+                new ErrorCode("auth.registration_disabled"),
+                ErrorType.Forbidden,
+                "Registration is disabled."));
+        }
 
         string userName = request.UserName.Trim();
         if (userName.Length is < 1 or > 64)
@@ -58,6 +72,7 @@ public sealed class AuthController(
     }
 
     [AllowAnonymous]
+    [EnableRateLimiting(RateLimitPolicies.Authentication)]
     [HttpPost("login")]
     [ProducesResponseType(typeof(AuthUserResponse), StatusCodes.Status200OK)]
     public async Task<ActionResult<AuthUserResponse>> Login(

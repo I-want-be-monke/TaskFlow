@@ -1,11 +1,19 @@
 using Microsoft.AspNetCore.Authentication.Cookies;
-using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.DataProtection;
+using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Diagnostics.HealthChecks;
+using Microsoft.Extensions.Options;
 using TaskFlow.Api.Auth;
+using TaskFlow.Api.Configuration;
 using TaskFlow.Api.Errors;
+using TaskFlow.Api.Health;
+using TaskFlow.Api.Middleware;
+using TaskFlow.Api.RateLimiting;
 using TaskFlow.Api.Security;
 using TaskFlow.Application.Common.Abstractions;
 using TaskFlow.Application.Common.Errors;
@@ -38,6 +46,22 @@ WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
 
 string postgresConnectionString = builder.Configuration.GetConnectionString("Postgres")
     ?? throw new InvalidOperationException("ConnectionStrings:Postgres is required.");
+
+builder.Services.AddValidatedTaskFlowOptions(builder.Configuration);
+builder.Services.AddSingleton<IConfigureOptions<Microsoft.AspNetCore.Builder.ForwardedHeadersOptions>, ForwardedHeadersOptionsSetup>();
+builder.Services.AddSingleton<IConfigureOptions<Microsoft.AspNetCore.Cors.Infrastructure.CorsOptions>, CorsOptionsSetup>();
+builder.Services.AddSingleton<IConfigureOptions<Microsoft.AspNetCore.Http.Timeouts.RequestTimeoutOptions>, RequestTimeoutOptionsSetup>();
+builder.Services.AddSingleton<IConfigureOptions<Microsoft.AspNetCore.Server.Kestrel.Core.KestrelServerOptions>, KestrelRequestLimitOptionsSetup>();
+builder.Services.AddSingleton<IConfigureOptions<RateLimiterOptions>, RateLimiterOptionsSetup>();
+
+builder.Services.AddCors();
+builder.Services.AddRequestTimeouts();
+builder.Services.AddRateLimiter();
+builder.Services.AddHealthChecks()
+    .AddCheck<PostgresReadinessHealthCheck>(
+        "postgres",
+        failureStatus: HealthStatus.Unhealthy,
+        tags: ["ready"]);
 
 builder.Services.AddProblemDetails();
 builder.Services.AddExceptionHandler<GlobalExceptionHandler>();
@@ -170,10 +194,35 @@ builder.Services.AddScoped<DeleteTagHandler>();
 
 WebApplication app = builder.Build();
 
+app.UseForwardedHeaders();
 app.UseExceptionHandler();
+app.UseRouting();
+app.UseMiddleware<RequestBodyLimitMiddleware>();
+app.UseRequestTimeouts();
+
+if (app.Environment.IsDevelopment())
+{
+    app.UseCors(CorsOptionsSetup.DevelopmentPolicyName);
+}
+
 app.UseAuthentication();
+app.UseRateLimiter();
 app.UseAuthorization();
+
 app.MapControllers();
+
+app.MapHealthChecks("/health/live", new HealthCheckOptions
+    {
+        Predicate = _ => false,
+    })
+    .AllowAnonymous()
+    .DisableRateLimiting();
+
+app.MapHealthChecks("/health/ready", new HealthCheckOptions
+    {
+        Predicate = registration => registration.Tags.Contains("ready"),
+    })
+    .DisableRateLimiting();
 
 app.Run();
 
