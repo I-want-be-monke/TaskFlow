@@ -24,9 +24,9 @@ public sealed class Project
         Version = 1;
     }
 
-    public Guid Id { get; }
+    public Guid Id { get; private set; }
 
-    public Guid OwnerUserId { get; }
+    public Guid OwnerUserId { get; private set; }
 
     public string Name { get; private set; }
 
@@ -34,7 +34,7 @@ public sealed class Project
 
     public ProjectStatus Status { get; private set; }
 
-    public DateTimeOffset CreatedAt { get; }
+    public DateTimeOffset CreatedAt { get; private set; }
 
     public DateTimeOffset UpdatedAt { get; private set; }
 

@@ -29,9 +29,9 @@ public sealed class TaskItem
         Version = 1;
     }
 
-    public Guid Id { get; }
+    public Guid Id { get; private set; }
 
-    public Guid ProjectId { get; }
+    public Guid ProjectId { get; private set; }
 
     public string Title { get; private set; }
 
@@ -43,7 +43,7 @@ public sealed class TaskItem
 
     public DateTimeOffset? DueAt { get; private set; }
 
-    public DateTimeOffset CreatedAt { get; }
+    public DateTimeOffset CreatedAt { get; private set; }
 
     public DateTimeOffset UpdatedAt { get; private set; }
 

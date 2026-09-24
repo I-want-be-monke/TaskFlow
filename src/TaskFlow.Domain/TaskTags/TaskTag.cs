@@ -11,11 +11,11 @@ public sealed class TaskTag
         CreatedAt = createdAt;
     }
 
-    public Guid TaskId { get; }
+    public Guid TaskId { get; private set; }
 
-    public Guid TagId { get; }
+    public Guid TagId { get; private set; }
 
-    public DateTimeOffset CreatedAt { get; }
+    public DateTimeOffset CreatedAt { get; private set; }
 
     public static TaskTag Create(Guid taskId, Guid tagId, DateTimeOffset now)
     {
