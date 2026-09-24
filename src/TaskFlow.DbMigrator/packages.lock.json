@@ -1,0 +1,23 @@
+{
+  "version": 1,
+  "dependencies": {
+    "net10.0": {
+      "TaskFlow.Application": {
+        "type": "Project",
+        "dependencies": {
+          "TaskFlow.Domain": "[1.0.0, )"
+        }
+      },
+      "TaskFlow.Domain": {
+        "type": "Project"
+      },
+      "TaskFlow.Infrastructure": {
+        "type": "Project",
+        "dependencies": {
+          "TaskFlow.Application": "[1.0.0, )",
+          "TaskFlow.Domain": "[1.0.0, )"
+        }
+      }
+    }
+  }
+}

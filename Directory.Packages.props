@@ -1,0 +1,11 @@
+<Project>
+  <PropertyGroup>
+    <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
+  </PropertyGroup>
+
+  <!--
+    Stage 0 intentionally has no external NuGet dependencies.
+    New package versions must be declared here first; project files reference
+    packages without Version attributes.
+  -->
+</Project>
