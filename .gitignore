@@ -39,3 +39,7 @@ coverage/
 # Stage 14 local container runtime material
 .env.compose.local
 .local/
+
+# Python tooling caches
+__pycache__/
+*.py[cod]

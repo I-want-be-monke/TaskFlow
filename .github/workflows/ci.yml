@@ -20,7 +20,7 @@ env:
 
 jobs:
   quality:
-    name: Build, analyzers, unit and architecture
+    name: Build, analyzers, unit and final architecture
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
@@ -44,7 +44,7 @@ jobs:
         run: dotnet build TaskFlow.sln --no-restore --configuration Release
 
       - name: Architecture and stage guards
-        run: ./scripts/verify-static-stage15.sh
+        run: ./scripts/verify-static-stage16.sh
 
       - name: Domain unit tests
         run: dotnet test tests/TaskFlow.Domain.Tests/TaskFlow.Domain.Tests.csproj --no-build --no-restore --configuration Release
@@ -113,10 +113,10 @@ jobs:
           retention-days: 14
 
   containers:
-    name: Container build, scan, smoke and E2E
+    name: Container build, scan, smoke and final browser E2E
     needs: [quality, integration_p0, supply_chain]
     runs-on: ubuntu-24.04
-    timeout-minutes: 45
+    timeout-minutes: 55
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -134,6 +134,14 @@ jobs:
 
       - name: End-to-end same-origin frontend smoke
         run: python3 scripts/ci_e2e_smoke.py
+
+      - name: Install pinned Playwright browser harness
+        run: |
+          python3 -m pip install --disable-pip-version-check 'playwright==1.63.0'
+          python3 -m playwright install --with-deps chromium
+
+      - name: Final browser E2E and Definition of Done runtime flow
+        run: python3 scripts/final_browser_e2e.py
 
       - name: Collect compose diagnostics on failure
         if: failure()
