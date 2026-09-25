@@ -47,7 +47,10 @@ public sealed class RequestBodyLimitMiddleware(
         problem.Extensions["traceId"] = context.TraceIdentifier;
 
         context.Response.StatusCode = StatusCodes.Status413PayloadTooLarge;
-        context.Response.ContentType = "application/problem+json";
-        await context.Response.WriteAsJsonAsync(problem, cancellationToken: context.RequestAborted);
+        await context.Response.WriteAsJsonAsync(
+            problem,
+            options: null,
+            contentType: "application/problem+json",
+            cancellationToken: context.RequestAborted);
     }
 }

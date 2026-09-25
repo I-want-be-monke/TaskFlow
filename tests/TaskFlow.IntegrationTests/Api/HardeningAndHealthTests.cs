@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Http.Json;
+using System.Text;
 using System.Text.Json;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
@@ -63,9 +64,12 @@ public sealed class HardeningAndHealthTests(PostgresFixture fixture) : IClassFix
         using HttpClient client = factory.CreateHttpsClient();
         await RefreshAntiforgeryAsync(client);
 
-        using HttpResponseMessage response = await client.PostAsJsonAsync(
-            "/api/v1/auth/register",
-            new RegisterRequest("oversized-user", new string('x', 4096)));
+        var request = new RegisterRequest("oversized-user", new string('x', 4096));
+        using var content = new StringContent(
+            JsonSerializer.Serialize(request, JsonOptions),
+            Encoding.UTF8,
+            "application/json");
+        using HttpResponseMessage response = await client.PostAsync("/api/v1/auth/register", content);
 
         Assert.Equal((HttpStatusCode)StatusCodes.Status413PayloadTooLarge, response.StatusCode);
         Assert.Equal("application/problem+json", response.Content.Headers.ContentType?.MediaType);

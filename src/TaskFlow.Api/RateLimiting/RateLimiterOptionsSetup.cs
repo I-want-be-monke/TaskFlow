@@ -38,8 +38,11 @@ public sealed class RateLimiterOptionsSetup(
             };
             problem.Extensions["code"] = "http.rate_limit_exceeded";
             problem.Extensions["traceId"] = context.HttpContext.TraceIdentifier;
-            context.HttpContext.Response.ContentType = "application/problem+json";
-            await context.HttpContext.Response.WriteAsJsonAsync(problem, cancellationToken: cancellationToken);
+            await context.HttpContext.Response.WriteAsJsonAsync(
+                problem,
+                options: null,
+                contentType: "application/problem+json",
+                cancellationToken: cancellationToken);
         };
 
         options.GlobalLimiter = PartitionedRateLimiter.Create<HttpContext, string>(context =>

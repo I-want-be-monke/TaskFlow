@@ -33,8 +33,11 @@ public sealed class RequestTimeoutOptionsSetup(
                 };
                 problem.Extensions["code"] = "http.request_timeout";
                 problem.Extensions["traceId"] = context.TraceIdentifier;
-                context.Response.ContentType = "application/problem+json";
-                await context.Response.WriteAsJsonAsync(problem, cancellationToken: CancellationToken.None);
+                await context.Response.WriteAsJsonAsync(
+                    problem,
+                    options: null,
+                    contentType: "application/problem+json",
+                    cancellationToken: CancellationToken.None);
             },
         };
     }
