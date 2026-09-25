@@ -370,11 +370,11 @@ def run_browser_flow(base_url: str, env_file: Path, values: dict[str, str]) -> N
 
         # Filter/list path.
         filters = page.get_by_test_id("task-filters")
-        filters.get_by_label("Search").fill(task_edited)
-        filters.get_by_label("Status").select_option("InProgress")
-        filters.get_by_label("Priority").select_option("Medium")
-        filters.get_by_label("Tag").select_option(label=tag_name)
-        filters.get_by_label("Sort").select_option("title:asc")
+        filters.get_by_label("Search", exact=True).fill(task_edited)
+        filters.get_by_label("Status", exact=True).select_option("InProgress")
+        filters.get_by_label("Priority", exact=True).select_option("Medium")
+        filters.get_by_label("Tag", exact=True).select_option(label=tag_name)
+        filters.get_by_label("Sort", exact=True).select_option("title:asc")
         filters.get_by_role("button", name="Apply filters").click()
         row_with_text(page, "task-list", task_edited)
 
