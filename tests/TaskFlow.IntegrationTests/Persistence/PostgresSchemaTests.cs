@@ -266,7 +266,7 @@ public sealed class PostgresSchemaTests(PostgresFixture fixture) : IClassFixture
         PostgresException exception = await Assert.ThrowsAsync<PostgresException>(
             () => command.ExecuteNonQueryAsync());
 
-        Assert.Equal(PostgresErrorCodes.ForeignKeyViolation, exception.SqlState);
+        Assert.Equal(PostgresErrorCodes.RestrictViolation, exception.SqlState);
     }
 
     [Fact]

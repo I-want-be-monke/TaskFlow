@@ -63,9 +63,6 @@ builder.Logging.AddFilter("Microsoft.AspNetCore.Diagnostics.ExceptionHandlerMidd
 builder.Logging.AddFilter("Microsoft.EntityFrameworkCore.Database.Command", LogLevel.Warning);
 builder.Logging.AddFilter("Microsoft.EntityFrameworkCore.Database.Connection", LogLevel.Warning);
 
-string postgresConnectionString = builder.Configuration.GetConnectionString("Postgres")
-    ?? throw new InvalidOperationException("ConnectionStrings:Postgres is required.");
-
 builder.Services.AddValidatedTaskFlowOptions(builder.Configuration);
 builder.Services.AddSingleton<IConfigureOptions<Microsoft.AspNetCore.Builder.ForwardedHeadersOptions>, ForwardedHeadersOptionsSetup>();
 builder.Services.AddSingleton<IConfigureOptions<Microsoft.AspNetCore.Cors.Infrastructure.CorsOptions>, CorsOptionsSetup>();
@@ -117,6 +114,10 @@ builder.Services.AddSingleton(sp => new SlowDatabaseCommandInterceptor(
 
 builder.Services.AddDbContext<TaskFlowDbContext>((serviceProvider, options) =>
 {
+    string postgresConnectionString = serviceProvider
+        .GetRequiredService<IOptions<ConnectionStringsOptions>>()
+        .Value
+        .Postgres;
     options.UseNpgsql(postgresConnectionString);
     options.EnableSensitiveDataLogging(false);
     options.AddInterceptors(serviceProvider.GetRequiredService<SlowDatabaseCommandInterceptor>());

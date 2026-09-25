@@ -9,6 +9,13 @@ public static class ValidatedOptionsRegistration
         this IServiceCollection services,
         IConfiguration configuration)
     {
+        services.AddOptions<ConnectionStringsOptions>()
+            .Bind(configuration.GetSection(ConnectionStringsOptions.SectionName))
+            .Validate(
+                options => !string.IsNullOrWhiteSpace(options.Postgres),
+                "ConnectionStrings:Postgres is required.")
+            .ValidateOnStart();
+
         services.AddOptions<SecurityOptions>()
             .Bind(configuration.GetSection(SecurityOptions.SectionName))
             .ValidateDataAnnotations()
