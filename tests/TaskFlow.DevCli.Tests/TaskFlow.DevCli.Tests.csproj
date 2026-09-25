@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <RootNamespace>TaskFlow.DevCli.Tests</RootNamespace>
+    <AssemblyName>TaskFlow.DevCli.Tests</AssemblyName>
+    <IsTestProject>true</IsTestProject>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Playwright" />
+    <PackageReference Include="xunit.v3.mtp-v2" />
+    <ProjectReference Include="../../tools/TaskFlow.DevCli/TaskFlow.DevCli.csproj" />
+  </ItemGroup>
+</Project>
