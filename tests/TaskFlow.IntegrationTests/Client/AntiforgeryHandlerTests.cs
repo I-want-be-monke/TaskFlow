@@ -97,7 +97,7 @@ public sealed class AntiforgeryHandlerTests
                     TokenEndpointCalls++;
                     return new HttpResponseMessage(HttpStatusCode.OK)
                     {
-                        Content = new StringContent("{\"token\":\"csrf-token\"}", Encoding.UTF8, "application/json"),
+                        Content = new StringContent("{\"requestToken\":\"csrf-token\"}", Encoding.UTF8, "application/json"),
                     };
                 }
 
