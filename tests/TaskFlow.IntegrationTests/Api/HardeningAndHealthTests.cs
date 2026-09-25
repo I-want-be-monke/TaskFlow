@@ -242,7 +242,7 @@ public sealed class HardeningAndHealthTests(PostgresFixture fixture) : IClassFix
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         AntiforgeryResponse payload = await ReadRequiredAsync<AntiforgeryResponse>(response);
         client.DefaultRequestHeaders.Remove("X-XSRF-TOKEN");
-        client.DefaultRequestHeaders.TryAddWithoutValidation("X-XSRF-TOKEN", payload.Token);
+        client.DefaultRequestHeaders.TryAddWithoutValidation("X-XSRF-TOKEN", payload.RequestToken);
     }
 
     private static async Task<T> ReadRequiredAsync<T>(HttpResponseMessage response)

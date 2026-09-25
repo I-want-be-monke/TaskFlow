@@ -12,4 +12,4 @@ public sealed record LoginRequest(
 
 public sealed record AuthUserResponse(Guid Id, string UserName);
 
-public sealed record AntiforgeryResponse(string Token);
+public sealed record AntiforgeryResponse(string RequestToken);

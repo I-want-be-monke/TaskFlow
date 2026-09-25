@@ -29,12 +29,12 @@ public sealed class AntiforgeryTokenProvider(RawApiHttpClient rawApi) : IDisposa
                 "/api/v1/auth/antiforgery",
                 cancellationToken);
 
-            if (response is null || string.IsNullOrWhiteSpace(response.Token))
+            if (response is null || string.IsNullOrWhiteSpace(response.RequestToken))
             {
                 throw new InvalidOperationException("The API did not return an antiforgery token.");
             }
 
-            _token = response.Token;
+            _token = response.RequestToken;
             return _token;
         }
         finally

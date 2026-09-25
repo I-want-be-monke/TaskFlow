@@ -449,8 +449,8 @@ public sealed class AuthSecurityTests(PostgresFixture fixture) : IClassFixture<P
         AntiforgeryResponse payload = await ReadRequiredAsync<AntiforgeryResponse>(response);
 
         client.DefaultRequestHeaders.Remove("X-XSRF-TOKEN");
-        client.DefaultRequestHeaders.TryAddWithoutValidation("X-XSRF-TOKEN", payload.Token);
-        return payload.Token;
+        client.DefaultRequestHeaders.TryAddWithoutValidation("X-XSRF-TOKEN", payload.RequestToken);
+        return payload.RequestToken;
     }
 
     private static async Task<(string Cookie, string Token)> FetchTokenAndCookieAsync(
@@ -466,7 +466,7 @@ public sealed class AuthSecurityTests(PostgresFixture fixture) : IClassFixture<P
         using HttpResponseMessage response = await client.SendAsync(request);
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         AntiforgeryResponse payload = await ReadRequiredAsync<AntiforgeryResponse>(response);
-        return (ExtractCookie(response, "__Host-TaskFlow.Antiforgery"), payload.Token);
+        return (ExtractCookie(response, "__Host-TaskFlow.Antiforgery"), payload.RequestToken);
     }
 
     private static string ExtractCookie(HttpResponseMessage response, string name)
