@@ -78,11 +78,11 @@ else if (_project is not null)
         <div class="filter-grid">
             <label>
                 Search
-                <input class="input" @bind="_searchText" placeholder="Title or description" />
+                <input class="input" aria-label="Search" @bind="_searchText" placeholder="Title or description" />
             </label>
             <label>
                 Status
-                <select class="input" @bind="_statusFilter">
+                <select class="input" aria-label="Status" @bind="_statusFilter">
                     <option value="">All</option>
                     @foreach (string status in TaskFormOptions.Statuses)
                     {
@@ -92,7 +92,7 @@ else if (_project is not null)
             </label>
             <label>
                 Priority
-                <select class="input" @bind="_priorityFilter">
+                <select class="input" aria-label="Priority" @bind="_priorityFilter">
                     <option value="">All</option>
                     @foreach (string priority in TaskFormOptions.Priorities)
                     {
@@ -102,7 +102,7 @@ else if (_project is not null)
             </label>
             <label>
                 Tag
-                <select class="input" @bind="_tagFilter">
+                <select class="input" aria-label="Tag" @bind="_tagFilter">
                     <option value="">All</option>
                     @foreach (TagDto tag in _tags)
                     {
@@ -120,7 +120,7 @@ else if (_project is not null)
             </label>
             <label>
                 Sort
-                <select class="input" @bind="_sort">
+                <select class="input" aria-label="Sort" @bind="_sort">
                     <option value="@TaskSort.CreatedAtDescending">Newest first</option>
                     <option value="@TaskSort.CreatedAtAscending">Oldest first</option>
                     <option value="@TaskSort.DueAtAscending">Due date ↑</option>
