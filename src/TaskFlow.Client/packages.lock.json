@@ -8,6 +8,47 @@
         "resolved": "10.0.12",
         "contentHash": "+sIBo9AMBZH46qHWHQdfzcGMt+RuBaPYrUMOAM9VjA7MQ9QtIez3lq1C3E05+Yroa94KKt3DSWaxmCI4H28a9Q=="
       },
+      "Microsoft.AspNetCore.Components.Authorization": {
+        "type": "Direct",
+        "requested": "[10.0.12, )",
+        "resolved": "10.0.12",
+        "contentHash": "UPlqUD1pYuG0iknIlUaR0Dq9WnesJ0qpVYJjGPfLEwz1o0RFBNw2gIzlSpZ8wdzaTSZOGax2MRUF1mnV7rWlcg==",
+        "dependencies": {
+          "Microsoft.AspNetCore.Authorization": "10.0.12",
+          "Microsoft.AspNetCore.Components": "10.0.12"
+        }
+      },
+      "Microsoft.AspNetCore.Components.WebAssembly": {
+        "type": "Direct",
+        "requested": "[10.0.12, )",
+        "resolved": "10.0.12",
+        "contentHash": "/IEbzyCnW0t+1ZQcxcV3Aj65gus2ILsUaA8U0rnkSGRQbKlJxr/5YOifOLq0eLrM0m3kXEV/A3iEwrqT3tgwiw==",
+        "dependencies": {
+          "Microsoft.AspNetCore.Components.Web": "10.0.12",
+          "Microsoft.Extensions.Configuration.Binder": "10.0.12",
+          "Microsoft.Extensions.Configuration.Json": "10.0.12",
+          "Microsoft.Extensions.Logging": "10.0.12",
+          "Microsoft.JSInterop.WebAssembly": "10.0.12"
+        }
+      },
+      "Microsoft.AspNetCore.Components.WebAssembly.DevServer": {
+        "type": "Direct",
+        "requested": "[10.0.12, )",
+        "resolved": "10.0.12",
+        "contentHash": "48UkblVYCTqvnCZhqb0riRpdq+nGsfv54yDA4nXEyzXUvlfet5tBvQZKSRkqJmK6h1PeApCRis9USwu2USq5rw=="
+      },
+      "Microsoft.NET.ILLink.Tasks": {
+        "type": "Direct",
+        "requested": "[10.0.12, )",
+        "resolved": "10.0.12",
+        "contentHash": "xi+BDjFpW+Sb+MHFHaH6Y/gV9I8BluFwRXc1QyCdoZbIK26eNiBeFuMTe/FMwc33G1wdHCyDg7CVTmb8OdQrMQ=="
+      },
+      "Microsoft.NET.Sdk.WebAssembly.Pack": {
+        "type": "Direct",
+        "requested": "[10.0.12, )",
+        "resolved": "10.0.12",
+        "contentHash": "MIeBVeWkbKdggl3kmmIUnx8ZNEgjD2m1gTN/0W+TDRn6zcL1WZdq5hXhGQ0wjuSlw/8tvwwCg79PemfkJ3+5JA=="
+      },
       "Microsoft.AspNetCore.Authorization": {
         "type": "Transitive",
         "resolved": "10.0.12",
@@ -33,16 +74,6 @@
         "resolved": "10.0.12",
         "contentHash": "XXK/4sZejrRUFmm1uU6iSwcsfzURFpqXRzm3ycALmgmk8zl6HwXFMKjPgrO5azVPlrHeNPYRftMukjbwD4fa1w=="
       },
-      "Microsoft.AspNetCore.Components.Authorization": {
-        "type": "Direct",
-        "requested": "[10.0.12, )",
-        "resolved": "10.0.12",
-        "contentHash": "UPlqUD1pYuG0iknIlUaR0Dq9WnesJ0qpVYJjGPfLEwz1o0RFBNw2gIzlSpZ8wdzaTSZOGax2MRUF1mnV7rWlcg==",
-        "dependencies": {
-          "Microsoft.AspNetCore.Authorization": "10.0.12",
-          "Microsoft.AspNetCore.Components": "10.0.12"
-        }
-      },
       "Microsoft.AspNetCore.Components.Forms": {
         "type": "Transitive",
         "resolved": "10.0.12",
@@ -63,25 +94,6 @@
           "Microsoft.Extensions.Primitives": "10.0.12",
           "Microsoft.JSInterop": "10.0.12"
         }
-      },
-      "Microsoft.AspNetCore.Components.WebAssembly": {
-        "type": "Direct",
-        "requested": "[10.0.12, )",
-        "resolved": "10.0.12",
-        "contentHash": "/IEbzyCnW0t+1ZQcxcV3Aj65gus2ILsUaA8U0rnkSGRQbKlJxr/5YOifOLq0eLrM0m3kXEV/A3iEwrqT3tgwiw==",
-        "dependencies": {
-          "Microsoft.AspNetCore.Components.Web": "10.0.12",
-          "Microsoft.Extensions.Configuration.Binder": "10.0.12",
-          "Microsoft.Extensions.Configuration.Json": "10.0.12",
-          "Microsoft.Extensions.Logging": "10.0.12",
-          "Microsoft.JSInterop.WebAssembly": "10.0.12"
-        }
-      },
-      "Microsoft.AspNetCore.Components.WebAssembly.DevServer": {
-        "type": "Direct",
-        "requested": "[10.0.12, )",
-        "resolved": "10.0.12",
-        "contentHash": "48UkblVYCTqvnCZhqb0riRpdq+nGsfv54yDA4nXEyzXUvlfet5tBvQZKSRkqJmK6h1PeApCRis9USwu2USq5rw=="
       },
       "Microsoft.AspNetCore.Metadata": {
         "type": "Transitive",
@@ -257,18 +269,6 @@
         "dependencies": {
           "Microsoft.JSInterop": "10.0.12"
         }
-      },
-      "Microsoft.NET.ILLink.Tasks": {
-        "type": "Direct",
-        "requested": "[10.0.12, )",
-        "resolved": "10.0.12",
-        "contentHash": "xi+BDjFpW+Sb+MHFHaH6Y/gV9I8BluFwRXc1QyCdoZbIK26eNiBeFuMTe/FMwc33G1wdHCyDg7CVTmb8OdQrMQ=="
-      },
-      "Microsoft.NET.Sdk.WebAssembly.Pack": {
-        "type": "Direct",
-        "requested": "[10.0.12, )",
-        "resolved": "10.0.12",
-        "contentHash": "MIeBVeWkbKdggl3kmmIUnx8ZNEgjD2m1gTN/0W+TDRn6zcL1WZdq5hXhGQ0wjuSlw/8tvwwCg79PemfkJ3+5JA=="
       }
     },
     "net10.0/browser-wasm": {}

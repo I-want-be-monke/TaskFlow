@@ -1,5 +1,6 @@
 using TaskFlow.Application.Common.Pagination;
 using TaskFlow.Application.Projects;
+using PaginationParameters = TaskFlow.Application.Common.Pagination.Pagination;
 
 namespace TaskFlow.Application.Common.Abstractions;
 
@@ -12,6 +13,6 @@ public interface IProjectQueries
 
     Task<PagedResult<ProjectReadModel>> ListOwnedAsync(
         Guid ownerUserId,
-        Pagination pagination,
+        PaginationParameters pagination,
         CancellationToken cancellationToken);
 }

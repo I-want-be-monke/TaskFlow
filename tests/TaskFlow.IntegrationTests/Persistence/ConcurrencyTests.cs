@@ -95,8 +95,8 @@ public sealed class ConcurrencyTests(PostgresFixture fixture) : IClassFixture<Po
         Task<Result> secondSave = SaveAfterBarrierAsync(secondUnitOfWork, barrier);
         Result[] results = await Task.WhenAll(firstSave, secondSave);
 
-        Assert.Single(results.Where(result => result.IsSuccess));
-        Result conflict = Assert.Single(results.Where(result => result.IsFailure));
+        Assert.Single(results, result => result.IsSuccess);
+        Result conflict = Assert.Single(results, result => result.IsFailure);
         Assert.Equal(ErrorType.Conflict, conflict.Error!.Type);
         Assert.Equal("persistence.concurrency_conflict", conflict.Error.Code.Value);
     }
@@ -126,8 +126,8 @@ public sealed class ConcurrencyTests(PostgresFixture fixture) : IClassFixture<Po
             SaveAfterBarrierAsync(firstUnitOfWork, barrier),
             SaveAfterBarrierAsync(secondUnitOfWork, barrier));
 
-        Assert.Single(results.Where(result => result.IsSuccess));
-        Result conflict = Assert.Single(results.Where(result => result.IsFailure));
+        Assert.Single(results, result => result.IsSuccess);
+        Result conflict = Assert.Single(results, result => result.IsFailure);
         Assert.Equal(ErrorType.Conflict, conflict.Error!.Type);
         Assert.Equal("tags.duplicate_name", conflict.Error.Code.Value);
     }

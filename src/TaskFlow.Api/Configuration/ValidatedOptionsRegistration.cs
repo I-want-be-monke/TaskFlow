@@ -60,8 +60,8 @@ public static class ValidatedOptionsRegistration
         foreach (string origin in options.AllowedOrigins)
         {
             if (string.IsNullOrWhiteSpace(origin)
-                || origin.Contains('*', StringComparison.Ordinal)
-                || origin.EndsWith('/', StringComparison.Ordinal)
+                || origin.Contains('*')
+                || origin.EndsWith('/')
                 || !Uri.TryCreate(origin, UriKind.Absolute, out Uri? uri)
                 || (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps)
                 || uri.AbsolutePath != "/"
@@ -80,6 +80,6 @@ public static class ValidatedOptionsRegistration
     private static bool ValidateProxy(ProxyOptions options)
     {
         return options.KnownProxies.All(value => IPAddress.TryParse(value, out _))
-            && options.KnownNetworks.All(value => IPNetwork.TryParse(value, out _));
+            && options.KnownNetworks.All(value => System.Net.IPNetwork.TryParse(value, out _));
     }
 }

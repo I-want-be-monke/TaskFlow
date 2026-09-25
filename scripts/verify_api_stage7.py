@@ -131,10 +131,14 @@ try:
     integration_lock = json.loads(read(ROOT / "tests" / "TaskFlow.IntegrationTests" / "packages.lock.json"))["dependencies"]["net10.0"]
 except (json.JSONDecodeError, KeyError):
     raise SystemExit("Stage 7 verification failed: IntegrationTests lock file is invalid")
-api_project = integration_lock.get("TaskFlow.Api", {})
+api_project = next(
+    (entry for package, entry in integration_lock.items() if package.casefold() == "taskflow.api"),
+    {},
+)
 require(api_project.get("type") == "Project", "IntegrationTests lock file must include TaskFlow.Api project dependency")
-require("TaskFlow.Application" in api_project.get("dependencies", {}) and
-        "TaskFlow.Infrastructure" in api_project.get("dependencies", {}),
+api_dependencies = {package.casefold() for package in api_project.get("dependencies", {})}
+require("taskflow.application" in api_dependencies and
+        "taskflow.infrastructure" in api_dependencies,
         "TaskFlow.Api lock entry must retain Application + Infrastructure dependencies")
 
 crud_tests = read(TESTS / "ApiCrudPostgresTests.cs")

@@ -34,7 +34,7 @@ public sealed class ForwardedHeadersOptionsSetup(IOptions<ProxyOptions> proxyOpt
 
         foreach (string value in proxy.KnownNetworks)
         {
-            options.KnownIPNetworks.Add(IPNetwork.Parse(value));
+            options.KnownIPNetworks.Add(System.Net.IPNetwork.Parse(value));
         }
     }
 }

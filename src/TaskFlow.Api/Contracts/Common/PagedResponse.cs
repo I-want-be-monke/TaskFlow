@@ -7,7 +7,9 @@ public sealed record PagedResponse<T>(
     int Page,
     int PageSize,
     long TotalCount,
-    long TotalPages)
+    long TotalPages);
+
+public static class PagedResponse
 {
     public static PagedResponse<TResponse> From<TSource, TResponse>(
         PagedResult<TSource> source,

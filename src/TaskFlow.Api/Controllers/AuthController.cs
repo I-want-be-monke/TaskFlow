@@ -85,7 +85,7 @@ public sealed class AuthController(
         cancellationToken.ThrowIfCancellationRequested();
 
         string userName = request.UserName.Trim();
-        SignInResult signInResult = await signInManager.PasswordSignInAsync(
+        Microsoft.AspNetCore.Identity.SignInResult signInResult = await signInManager.PasswordSignInAsync(
             userName,
             request.Password,
             isPersistent: false,

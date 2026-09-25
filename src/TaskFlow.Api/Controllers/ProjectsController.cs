@@ -44,7 +44,7 @@ public sealed class ProjectsController(
             return this.ToProblem(result.Error!);
         }
 
-        return Ok(PagedResponse<ProjectResponse>.From(result.Value, static project => project.ToResponse()));
+        return Ok(PagedResponse.From(result.Value, static project => project.ToResponse()));
     }
 
     [HttpGet("{projectId:guid}", Name = RouteNames.GetProject)]

@@ -13,6 +13,16 @@ public sealed class UnitOfWork(
     ILogger<UnitOfWork> logger) : IUnitOfWork
 {
     private const string TagNameUniqueConstraint = "ux_tags_owner_user_id_normalized_name";
+    private static readonly Action<ILogger, string, Exception?> LogConcurrencyConflict =
+        LoggerMessage.Define<string>(
+            LogLevel.Warning,
+            TaskFlowLogEvents.ConcurrencyConflict,
+            "Optimistic concurrency conflict. Reason={reason_code}");
+    private static readonly Action<ILogger, string, Exception?> LogDatabaseUnavailable =
+        LoggerMessage.Define<string>(
+            LogLevel.Error,
+            TaskFlowLogEvents.DatabaseUnavailable,
+            "Database unavailable while saving changes. ErrorType={error_type}");
 
     public async Task<Result> SaveChangesAsync(CancellationToken cancellationToken)
     {
@@ -23,10 +33,7 @@ public sealed class UnitOfWork(
         }
         catch (DbUpdateConcurrencyException)
         {
-            logger.LogWarning(
-                TaskFlowLogEvents.ConcurrencyConflict,
-                "Optimistic concurrency conflict. Reason={reason_code}",
-                "stale_version");
+            LogConcurrencyConflict(logger, "stale_version", null);
             return Result.Failure(PersistenceErrors.ConcurrencyConflict());
         }
         catch (DbUpdateException exception)
@@ -44,18 +51,12 @@ public sealed class UnitOfWork(
         catch (DbUpdateException exception)
             when (exception.InnerException is NpgsqlException npgsqlException)
         {
-            logger.LogError(
-                TaskFlowLogEvents.DatabaseUnavailable,
-                "Database unavailable while saving changes. ErrorType={error_type}",
-                npgsqlException.GetType().Name);
+            LogDatabaseUnavailable(logger, npgsqlException.GetType().Name, null);
             return Result.Failure(PersistenceErrors.DatabaseUnavailable());
         }
         catch (NpgsqlException exception)
         {
-            logger.LogError(
-                TaskFlowLogEvents.DatabaseUnavailable,
-                "Database unavailable while saving changes. ErrorType={error_type}",
-                exception.GetType().Name);
+            LogDatabaseUnavailable(logger, exception.GetType().Name, null);
             return Result.Failure(PersistenceErrors.DatabaseUnavailable());
         }
     }

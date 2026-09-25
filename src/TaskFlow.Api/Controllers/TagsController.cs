@@ -40,7 +40,7 @@ public sealed class TagsController(
             return this.ToProblem(result.Error!);
         }
 
-        return Ok(PagedResponse<TagResponse>.From(result.Value, static tag => tag.ToResponse()));
+        return Ok(PagedResponse.From(result.Value, static tag => tag.ToResponse()));
     }
 
     [HttpGet("{tagId:guid}", Name = RouteNames.GetTag)]

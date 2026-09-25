@@ -43,7 +43,7 @@ public sealed class UiFormValidationTests
         Assert.NotEmpty(Validate(tag));
     }
 
-    private static IReadOnlyList<ValidationResult> Validate(object instance)
+    private static List<ValidationResult> Validate(object instance)
     {
         var results = new List<ValidationResult>();
         Validator.TryValidateObject(instance, new ValidationContext(instance), results, validateAllProperties: true);

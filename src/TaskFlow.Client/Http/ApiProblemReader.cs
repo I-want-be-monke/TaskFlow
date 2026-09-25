@@ -5,6 +5,11 @@ namespace TaskFlow.Client.Http;
 
 public sealed class ApiProblemReader
 {
+    private readonly JsonDocumentOptions _documentOptions = new()
+    {
+        AllowTrailingCommas = false,
+    };
+
     public async Task<ApiProblem> ReadAsync(
         HttpResponseMessage response,
         CancellationToken cancellationToken = default)
@@ -23,7 +28,7 @@ public sealed class ApiProblemReader
             {
                 try
                 {
-                    using JsonDocument document = JsonDocument.Parse(json);
+                    using JsonDocument document = JsonDocument.Parse(json, _documentOptions);
                     JsonElement root = document.RootElement;
                     title = ReadString(root, "title") ?? title;
                     detail = ReadString(root, "detail");

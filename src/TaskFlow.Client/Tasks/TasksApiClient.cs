@@ -75,7 +75,7 @@ public sealed class TasksApiClient(ApiHttpClient api)
         return "/api/v1/tasks?" + string.Join('&', query);
     }
 
-    private static void Add(ICollection<string> query, string name, string? value)
+    private static void Add(List<string> query, string name, string? value)
     {
         if (!string.IsNullOrWhiteSpace(value))
         {

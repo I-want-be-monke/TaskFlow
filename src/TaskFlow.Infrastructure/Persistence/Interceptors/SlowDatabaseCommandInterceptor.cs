@@ -9,6 +9,12 @@ public sealed class SlowDatabaseCommandInterceptor(
     ILogger<SlowDatabaseCommandInterceptor> logger,
     int thresholdMilliseconds) : DbCommandInterceptor
 {
+    private static readonly Action<ILogger, string, double, Exception?> LogSlowDatabaseOperation =
+        LoggerMessage.Define<string, double>(
+            LogLevel.Warning,
+            TaskFlowLogEvents.SlowDatabaseOperation,
+            "Slow database operation detected. Operation={db_operation} DurationMs={duration_ms}");
+
     private readonly TimeSpan _threshold = TimeSpan.FromMilliseconds(
         thresholdMilliseconds > 0
             ? thresholdMilliseconds
@@ -78,10 +84,10 @@ public sealed class SlowDatabaseCommandInterceptor(
             return;
         }
 
-        logger.LogWarning(
-            TaskFlowLogEvents.SlowDatabaseOperation,
-            "Slow database operation detected. Operation={db_operation} DurationMs={duration_ms}",
+        LogSlowDatabaseOperation(
+            logger,
             eventData.CommandSource.ToString(),
-            Math.Round(eventData.Duration.TotalMilliseconds, 3));
+            Math.Round(eventData.Duration.TotalMilliseconds, 3),
+            null);
     }
 }

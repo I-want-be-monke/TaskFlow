@@ -121,13 +121,13 @@
           "xunit.v3.runner.common": "[4.0.0]"
         }
       },
-      "TaskFlow.Application": {
+      "taskflow.application": {
         "type": "Project",
         "dependencies": {
           "TaskFlow.Domain": "[1.0.0, )"
         }
       },
-      "TaskFlow.Domain": {
+      "taskflow.domain": {
         "type": "Project"
       }
     }

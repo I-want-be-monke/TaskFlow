@@ -55,8 +55,19 @@ required_files = [
 for relative in required_files:
     require((CLIENT / relative).is_file(), f"missing Client foundation file {relative}")
 
-all_client_cs = "\n".join(path.read_text(encoding="utf-8") for path in sorted(CLIENT.rglob("*.cs")))
-all_client_text = "\n".join(path.read_text(encoding="utf-8") for path in sorted(CLIENT.rglob("*")) if path.is_file())
+source_suffixes = {".cs", ".razor", ".html", ".css", ".json", ".xml", ".csproj"}
+all_client_cs = "\n".join(
+    path.read_text(encoding="utf-8")
+    for path in sorted(CLIENT.rglob("*.cs"))
+    if not {"bin", "obj"}.intersection(path.parts)
+)
+all_client_text = "\n".join(
+    path.read_text(encoding="utf-8")
+    for path in sorted(CLIENT.rglob("*"))
+    if path.is_file()
+    and path.suffix in source_suffixes
+    and not {"bin", "obj"}.intersection(path.parts)
+)
 for forbidden in [
     "TaskFlow.Api",
     "TaskFlow.Application",

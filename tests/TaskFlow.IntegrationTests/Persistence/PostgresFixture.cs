@@ -6,8 +6,7 @@ namespace TaskFlow.IntegrationTests.Persistence;
 
 public sealed class PostgresFixture : IAsyncLifetime
 {
-    private readonly PostgreSqlContainer _postgres = new PostgreSqlBuilder()
-        .WithImage("postgres:18-alpine")
+    private readonly PostgreSqlContainer _postgres = new PostgreSqlBuilder("postgres:18-alpine")
         .WithDatabase("taskflow_tests")
         .WithUsername("taskflow_test")
         .WithPassword("taskflow_test_password")

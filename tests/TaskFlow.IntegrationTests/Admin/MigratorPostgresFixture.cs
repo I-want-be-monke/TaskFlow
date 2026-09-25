@@ -5,8 +5,7 @@ namespace TaskFlow.IntegrationTests.Admin;
 
 public sealed class MigratorPostgresFixture : IAsyncLifetime
 {
-    private readonly PostgreSqlContainer _postgres = new PostgreSqlBuilder()
-        .WithImage("postgres:18-alpine")
+    private readonly PostgreSqlContainer _postgres = new PostgreSqlBuilder("postgres:18-alpine")
         .WithDatabase("taskflow_admin_tests")
         .WithUsername("taskflow_admin")
         .WithPassword("taskflow_admin_password")

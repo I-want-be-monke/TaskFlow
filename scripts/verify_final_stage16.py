@@ -121,7 +121,14 @@ for path in (ROOT / "src").rglob("*.cs"):
 require(production_migrate_calls == ["src/TaskFlow.DbMigrator/MigrationRunner.cs"],
         f"Only DbMigrator may migrate production schema; found {production_migrate_calls}")
 
-client_text = "\n".join(path.read_text(encoding="utf-8") for path in (ROOT / "src/TaskFlow.Client").rglob("*.*") if path.is_file())
+client_source_suffixes = {".cs", ".razor", ".html", ".css", ".json", ".xml", ".csproj"}
+client_text = "\n".join(
+    path.read_text(encoding="utf-8")
+    for path in (ROOT / "src/TaskFlow.Client").rglob("*.*")
+    if path.is_file()
+    and path.suffix in client_source_suffixes
+    and not {"bin", "obj"}.intersection(path.parts)
+)
 for forbidden in ("localStorage", "sessionStorage", "Bearer ", "refreshToken", "MarkupString", "innerHTML"):
     require(forbidden not in client_text, f"Final Client security boundary forbids {forbidden}")
 

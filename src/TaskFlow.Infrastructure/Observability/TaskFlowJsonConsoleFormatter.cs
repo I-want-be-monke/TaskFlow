@@ -155,7 +155,7 @@ public sealed class TaskFlowJsonConsoleFormatter : ConsoleFormatter, IDisposable
         return message;
     }
 
-    private static void CopyStructuredProperties(object? state, IDictionary<string, object?> target)
+    private static void CopyStructuredProperties(object? state, Dictionary<string, object?> target)
     {
         if (state is not IEnumerable<KeyValuePair<string, object?>> properties)
         {

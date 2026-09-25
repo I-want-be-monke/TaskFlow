@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import subprocess
 import sys
 import xml.etree.ElementTree as ET
 from pathlib import Path
@@ -79,8 +80,13 @@ for lock in required_lock_files:
     if not lock.is_file():
         fail(f"missing lock file: {lock.relative_to(ROOT)}")
 
+tracked_files = subprocess.check_output(
+    ["git", "ls-files"],
+    cwd=ROOT,
+    text=True,
+).splitlines()
 for generated in ("bin", "obj"):
-    if any(p.is_dir() for p in ROOT.rglob(generated)):
+    if any(generated in Path(path).parts for path in tracked_files):
         fail(f"generated directory {generated}/ must not be committed")
 
 for source in ROOT.rglob("*.cs"):

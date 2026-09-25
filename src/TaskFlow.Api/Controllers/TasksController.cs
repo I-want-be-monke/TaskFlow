@@ -78,7 +78,7 @@ public sealed class TasksController(
             return this.ToProblem(result.Error!);
         }
 
-        return Ok(PagedResponse<TaskResponse>.From(result.Value, static task => task.ToResponse()));
+        return Ok(PagedResponse.From(result.Value, static task => task.ToResponse()));
     }
 
     [HttpGet("tasks/{taskId:guid}", Name = RouteNames.GetTask)]

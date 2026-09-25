@@ -215,11 +215,18 @@ for lock_path in (
     except (json.JSONDecodeError, KeyError):
         errors.append(f"invalid lock file: {lock_path.relative_to(ROOT)}")
         continue
-    infra_project = deps.get("TaskFlow.Infrastructure", {})
+    infra_project = next(
+        (entry for package, entry in deps.items() if package.casefold() == "taskflow.infrastructure"),
+        {},
+    )
+    infra_dependencies = {
+        package.casefold()
+        for package in infra_project.get("dependencies", {})
+    }
     for name, version in expected_versions.items():
         if deps.get(name, {}).get("resolved") != version:
             errors.append(f"{lock_path.relative_to(ROOT)} missing transitive {name} {version}")
-        if name not in infra_project.get("dependencies", {}):
+        if name.casefold() not in infra_dependencies:
             errors.append(f"{lock_path.relative_to(ROOT)} Infrastructure project dependency missing {name}")
 
 integration_project = TESTS / "TaskFlow.IntegrationTests.csproj"

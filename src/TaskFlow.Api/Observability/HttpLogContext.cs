@@ -13,7 +13,7 @@ internal static class HttpLogContext
             return "unmatched";
         }
 
-        return raw.StartsWith("/", StringComparison.Ordinal) ? raw : $"/{raw}";
+        return raw.StartsWith('/') ? raw : $"/{raw}";
     }
 
     public static Guid? UserId(HttpContext context)

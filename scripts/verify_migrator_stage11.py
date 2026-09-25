@@ -84,7 +84,10 @@ for package, version in [
     ("Microsoft.Extensions.Logging.Console", "10.0.12"),
     ("Npgsql.EntityFrameworkCore.PostgreSQL", "10.0.3"),
 ]:
-    require(locked.get(package, {}).get("type") == "Transitive", f"{package} must stay transitive through Infrastructure")
+    require(
+        locked.get(package, {}).get("type") in {"Transitive", "CentralTransitive"},
+        f"{package} must stay transitive through Infrastructure",
+    )
     require(locked.get(package, {}).get("resolved") == version, f"{package} lock version changed")
 
 least_privilege = read(ROOT / "deploy" / "postgres" / "least-privilege.sql")

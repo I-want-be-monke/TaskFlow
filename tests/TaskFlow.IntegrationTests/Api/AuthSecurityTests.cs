@@ -153,8 +153,8 @@ public sealed class AuthSecurityTests(PostgresFixture fixture) : IClassFixture<P
 
         Assert.Equal(HttpStatusCode.Created, register.StatusCode);
         string cookie = Assert.Single(
-            register.Headers.GetValues("Set-Cookie")
-                .Where(value => value.StartsWith("__Host-TaskFlow.Auth=", StringComparison.Ordinal)));
+            register.Headers.GetValues("Set-Cookie"),
+            value => value.StartsWith("__Host-TaskFlow.Auth=", StringComparison.Ordinal));
 
         Assert.Contains("path=/", cookie, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("secure", cookie, StringComparison.OrdinalIgnoreCase);
@@ -472,8 +472,8 @@ public sealed class AuthSecurityTests(PostgresFixture fixture) : IClassFixture<P
     private static string ExtractCookie(HttpResponseMessage response, string name)
     {
         string value = Assert.Single(
-            response.Headers.GetValues("Set-Cookie")
-                .Where(header => header.StartsWith(name + "=", StringComparison.Ordinal)));
+            response.Headers.GetValues("Set-Cookie"),
+            header => header.StartsWith(name + "=", StringComparison.Ordinal));
         return value.Split(';', 2)[0];
     }
 

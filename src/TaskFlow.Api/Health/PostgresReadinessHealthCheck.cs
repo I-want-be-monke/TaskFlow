@@ -10,9 +10,11 @@ public sealed class PostgresReadinessHealthCheck(
     ILogger<PostgresReadinessHealthCheck> logger) : IHealthCheck
 {
     public async Task<HealthCheckResult> CheckHealthAsync(
-        HealthCheckContext _,
+        HealthCheckContext context,
         CancellationToken cancellationToken = default)
     {
+        ArgumentNullException.ThrowIfNull(context);
+
         try
         {
             bool canConnect = await dbContext.Database.CanConnectAsync(cancellationToken);
