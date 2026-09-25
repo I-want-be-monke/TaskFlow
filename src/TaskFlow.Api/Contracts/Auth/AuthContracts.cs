@@ -3,12 +3,12 @@ using System.ComponentModel.DataAnnotations;
 namespace TaskFlow.Api.Contracts.Auth;
 
 public sealed record RegisterRequest(
-    [property: Required, StringLength(64, MinimumLength = 1)] string UserName,
-    [property: Required] string Password);
+    [param: Required, StringLength(64, MinimumLength = 1)] string UserName,
+    [param: Required] string Password);
 
 public sealed record LoginRequest(
-    [property: Required, StringLength(64, MinimumLength = 1)] string UserName,
-    [property: Required] string Password);
+    [param: Required, StringLength(64, MinimumLength = 1)] string UserName,
+    [param: Required] string Password);
 
 public sealed record AuthUserResponse(Guid Id, string UserName);
 
