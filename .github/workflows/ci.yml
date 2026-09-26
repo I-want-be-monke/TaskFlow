@@ -1,0 +1,172 @@
+name: TaskFlow CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: taskflow-ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  DOTNET_NOLOGO: "true"
+  DOTNET_CLI_TELEMETRY_OPTOUT: "1"
+  NUGET_XMLDOC_MODE: skip
+
+jobs:
+  quality:
+    name: .NET quality
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+
+      - name: Setup .NET from global.json
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6
+        with:
+          global-json-file: global.json
+          cache: true
+          cache-dependency-path: '**/packages.lock.json'
+
+      - name: Restore .NET DevCli
+        run: dotnet restore tools/TaskFlow.DevCli/TaskFlow.DevCli.csproj --locked-mode
+
+      - name: Run quality pipeline in C#
+        run: dotnet run --project tools/TaskFlow.DevCli/TaskFlow.DevCli.csproj --no-restore --configuration Release -- ci quality
+
+  integration:
+    name: .NET PostgreSQL integration
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Setup .NET from global.json
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6
+        with:
+          global-json-file: global.json
+          cache: true
+          cache-dependency-path: '**/packages.lock.json'
+
+      - name: Restore .NET DevCli
+        run: dotnet restore tools/TaskFlow.DevCli/TaskFlow.DevCli.csproj --locked-mode
+
+      - name: Run integration pipeline in C#
+        run: dotnet run --project tools/TaskFlow.DevCli/TaskFlow.DevCli.csproj --no-restore --configuration Release -- ci integration
+
+  coverage:
+    name: .NET code coverage
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Setup .NET from global.json
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6
+        with:
+          global-json-file: global.json
+          cache: true
+          cache-dependency-path: '**/packages.lock.json'
+
+      - name: Restore local .NET tools
+        run: dotnet tool restore
+
+      - name: Restore solution
+        run: dotnet restore TaskFlow.sln --locked-mode
+
+      - name: Build solution
+        run: dotnet build TaskFlow.sln --no-restore --configuration Release
+
+      - name: Collect Cobertura coverage
+        run: |
+          mkdir -p artifacts/coverage
+          dotnet tool run dotnet-coverage collect \
+            --settings coverage.settings.xml \
+            --output-format cobertura \
+            --output artifacts/coverage/taskflow.cobertura.xml \
+            "dotnet test TaskFlow.sln --no-build --no-restore --configuration Release --max-parallel-test-modules 1"
+
+      - name: Upload coverage report
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: code-coverage-cobertura
+          path: artifacts/coverage/taskflow.cobertura.xml
+          if-no-files-found: error
+          retention-days: 14
+
+  supply_chain:
+    name: .NET supply-chain orchestration
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - name: Checkout full Git history
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Setup .NET from global.json
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6
+        with:
+          global-json-file: global.json
+          cache: true
+          cache-dependency-path: '**/packages.lock.json'
+
+      - name: Restore .NET DevCli
+        run: dotnet restore tools/TaskFlow.DevCli/TaskFlow.DevCli.csproj --locked-mode
+
+      - name: Run supply-chain pipeline in C#
+        run: dotnet run --project tools/TaskFlow.DevCli/TaskFlow.DevCli.csproj --no-restore --configuration Release -- ci supply-chain
+
+      - name: Upload supply-chain reports
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: supply-chain-reports
+          path: artifacts/
+          if-no-files-found: ignore
+          retention-days: 14
+
+  containers:
+    name: .NET containers + browser E2E
+    needs: [quality, integration, supply_chain]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Setup .NET from global.json
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6
+        with:
+          global-json-file: global.json
+          cache: true
+          cache-dependency-path: '**/packages.lock.json'
+
+      - name: Restore .NET DevCli and Playwright
+        run: dotnet restore tools/TaskFlow.DevCli/TaskFlow.DevCli.csproj --locked-mode
+
+      - name: Run container and browser pipeline in C#
+        run: dotnet run --project tools/TaskFlow.DevCli/TaskFlow.DevCli.csproj --no-restore --configuration Release -- ci containers
+
+      - name: Upload container reports and diagnostics
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: container-reports
+          path: artifacts/
+          if-no-files-found: ignore
+          retention-days: 14
