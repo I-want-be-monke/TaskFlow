@@ -138,7 +138,7 @@ internal sealed class BrowserE2eCommands
             await page.GetByRole(AriaRole.Link, new() { Name = projectEdited, Exact = true }).ClickAsync().ConfigureAwait(false);
             await page.GetByRole(AriaRole.Button, new() { Name = "Delete" }).ClickAsync().ConfigureAwait(false);
             await page.GetByTestId("project-delete-confirmation").GetByRole(AriaRole.Button, new() { Name = "Confirm delete" }).ClickAsync().ConfigureAwait(false);
-            await page.GetByRole(AriaRole.Heading, new() { Name = "Projects" }).WaitForAsync().ConfigureAwait(false);
+            await page.GetByRole(AriaRole.Heading, new() { Name = "Projects", Exact = true }).WaitForAsync().ConfigureAwait(false);
 
             await page.GetByRole(AriaRole.Button, new() { Name = "Logout" }).ClickAsync().ConfigureAwait(false);
             await page.GetByRole(AriaRole.Button, new() { Name = "Sign in" }).WaitForAsync().ConfigureAwait(false);
@@ -160,7 +160,7 @@ internal sealed class BrowserE2eCommands
         await page.GetByLabel("Password", new() { Exact = true }).FillAsync(password).ConfigureAwait(false);
         await page.GetByLabel("Confirm password").FillAsync(password).ConfigureAwait(false);
         await page.GetByRole(AriaRole.Button, new() { Name = "Create account" }).ClickAsync().ConfigureAwait(false);
-        await page.GetByRole(AriaRole.Heading, new() { Name = "Projects" }).WaitForAsync().ConfigureAwait(false);
+        await page.GetByRole(AriaRole.Heading, new() { Name = "Projects", Exact = true }).WaitForAsync().ConfigureAwait(false);
     }
 
     private static async Task LoginRoundTripAsync(IPage page, string username, string password)
@@ -170,7 +170,7 @@ internal sealed class BrowserE2eCommands
         await page.GetByLabel("User name").FillAsync(username).ConfigureAwait(false);
         await page.GetByLabel("Password").FillAsync(password).ConfigureAwait(false);
         await page.GetByRole(AriaRole.Button, new() { Name = "Sign in" }).ClickAsync().ConfigureAwait(false);
-        await page.GetByRole(AriaRole.Heading, new() { Name = "Projects" }).WaitForAsync().ConfigureAwait(false);
+        await page.GetByRole(AriaRole.Heading, new() { Name = "Projects", Exact = true }).WaitForAsync().ConfigureAwait(false);
     }
 
     private static async Task FillProjectFormAsync(IPage page, string name, string description, string testId)
