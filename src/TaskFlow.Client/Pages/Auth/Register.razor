@@ -26,14 +26,14 @@
 
         <label>
             Password
-            <InputText class="input" type="password" autocomplete="new-password" @bind-Value="_model.Password" />
+            <InputText class="input" type="password" autocomplete="new-password" aria-label="Password" @bind-Value="_model.Password" />
             <span class="muted">Use at least 12 characters and 6 unique characters, with uppercase, lowercase, a number, and a symbol.</span>
             <ValidationMessage For="@(() => _model.Password)" />
         </label>
 
         <label>
             Confirm password
-            <InputText class="input" type="password" autocomplete="new-password" @bind-Value="_model.ConfirmPassword" />
+            <InputText class="input" type="password" autocomplete="new-password" aria-label="Confirm password" @bind-Value="_model.ConfirmPassword" />
             <ValidationMessage For="@(() => _model.ConfirmPassword)" />
         </label>
 
