@@ -7,3 +7,6 @@ resources:
   - migrator-job.yaml
   - api.yaml
   - frontend.yaml
+  - victoria-logs.yaml
+  - vector.yaml
+  - vmalert.yaml

@@ -36,7 +36,7 @@ spec:
       automountServiceAccountToken: false
       containers:
         - name: api
-          image: taskflow-api:dz2
+          image: taskflow-api:dz3
           imagePullPolicy: IfNotPresent
           ports:
             - name: http
@@ -70,7 +70,7 @@ spec:
             - name: Proxy__KnownNetworks__0
               value: 10.244.0.0/16
             - name: Observability__ServiceVersion
-              value: dz2
+              value: dz3
             - name: Observability__SlowDbThresholdMs
               value: "500"
             - name: Logging__LogLevel__Default

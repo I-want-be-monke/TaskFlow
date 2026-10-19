@@ -97,7 +97,7 @@ spec:
       automountServiceAccountToken: false
       containers:
         - name: frontend
-          image: taskflow-frontend:dz2
+          image: taskflow-frontend:dz3
           imagePullPolicy: IfNotPresent
           ports:
             - name: http

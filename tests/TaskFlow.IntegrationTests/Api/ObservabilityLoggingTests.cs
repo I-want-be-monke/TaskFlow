@@ -45,17 +45,17 @@ public sealed class ObservabilityLoggingTests
         JsonElement root = json.RootElement;
 
         Assert.Equal(TaskFlowJsonConsoleFormatter.SchemaVersion, root.GetProperty("schema_version").GetString());
-        Assert.True(root.TryGetProperty("@timestamp", out _));
-        Assert.Equal("Information", root.GetProperty("log_level").GetString());
+        Assert.True(root.TryGetProperty("timestamp", out _));
+        Assert.Equal("Information", root.GetProperty("level").GetString());
         Assert.Equal(1001, root.GetProperty("event_id").GetInt32());
         Assert.Equal("RequestCompleted", root.GetProperty("event_name").GetString());
         Assert.Equal("Request completed.", root.GetProperty("message").GetString());
-        Assert.Equal("TaskFlow.Api", root.GetProperty("service_name").GetString());
-        Assert.Equal("integration-test", root.GetProperty("service_version").GetString());
-        Assert.Equal("Testing", root.GetProperty("deployment_environment").GetString());
-        Assert.Equal("test-instance", root.GetProperty("instance_id").GetString());
-        Assert.False(string.IsNullOrWhiteSpace(root.GetProperty("trace_id").GetString()));
-        Assert.False(string.IsNullOrWhiteSpace(root.GetProperty("span_id").GetString()));
+        Assert.Equal("TaskFlow.Api", root.GetProperty("service.name").GetString());
+        Assert.Equal("integration-test", root.GetProperty("service.version").GetString());
+        Assert.Equal("Testing", root.GetProperty("deployment.environment").GetString());
+        Assert.Equal("test-instance", root.GetProperty("service.instance.id").GetString());
+        Assert.False(string.IsNullOrWhiteSpace(root.GetProperty("trace.id").GetString()));
+        Assert.False(string.IsNullOrWhiteSpace(root.GetProperty("span.id").GetString()));
         Assert.Equal("request-123", root.GetProperty("request_id").GetString());
         Assert.Equal("GET", root.GetProperty("http_method").GetString());
         Assert.Equal("/api/v1/projects/{projectId:guid}", root.GetProperty("http_route").GetString());

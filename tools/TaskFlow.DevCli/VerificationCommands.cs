@@ -319,7 +319,17 @@ internal sealed class VerificationCommands
         }
 
         var formatter = Read("src/TaskFlow.Infrastructure/Observability/TaskFlowJsonConsoleFormatter.cs");
-        foreach (var field in new[] { "schema_version", "event_id", "event_name", "service_name", "service_version" })
+        foreach (var field in new[]
+                 {
+                     "schema_version",
+                     "timestamp",
+                     "level",
+                     "message",
+                     "service.name",
+                     "service.version",
+                     "event_id",
+                     "event_name",
+                 })
         {
             Require(formatter.Contains(field, StringComparison.Ordinal), $"Structured formatter is missing '{field}'.");
         }

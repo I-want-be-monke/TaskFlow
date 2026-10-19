@@ -31,7 +31,7 @@ spec:
               memory: 64Mi
       containers:
         - name: migrator
-          image: taskflow-migrator:dz2
+          image: taskflow-migrator:dz3
           imagePullPolicy: IfNotPresent
           env:
             - name: DOTNET_ENVIRONMENT

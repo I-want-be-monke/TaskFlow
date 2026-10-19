@@ -99,3 +99,23 @@ kubectl delete namespace taskflow
 
 Подробный сценарий записи находится в [Демонстрация.md](Демонстрация.md), краткий
 отчёт — в [Отчёт.md](Отчёт.md).
+
+## ДЗ 3: Victoria Logs, Vector и alert
+
+Kustomize также разворачивает в `taskflow` одноузловой Victoria Logs с PVC, Vector
+DaemonSet и бонусный контур `vmalert` + Alertmanager. API-образ для этой версии
+имеет тег `dz3`: перед первым применением его нужно собрать и загрузить в minikube
+с аргументом `-Tag dz3` у `Build-And-Load.ps1`.
+
+Скрипт `Deploy.ps1` (и Linux-вариант `deploy.sh`) ждёт готовности новых объектов и
+перезапускает Vector после обновления ConfigMap, чтобы конфигурация шиппера точно
+применялась.
+
+Открыть встроенный UI Victoria Logs:
+
+```text
+kubectl -n taskflow port-forward service/victoria-logs 9428:9428
+```
+
+После этого vmui доступен на `http://127.0.0.1:9428/select/vmui/`. Полный отчёт ДЗ 3,
+четыре снимка vmui и бонусный alert находятся в [ДЗ3/Отчёт.md](ДЗ3/Отчёт.md).

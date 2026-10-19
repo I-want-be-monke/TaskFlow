@@ -10,7 +10,7 @@ namespace TaskFlow.Infrastructure.Observability;
 public sealed class TaskFlowJsonConsoleFormatter : ConsoleFormatter, IDisposable
 {
     public const string FormatterName = "taskflow-json";
-    public const string SchemaVersion = "1";
+    public const string SchemaVersion = "2";
 
     private static readonly JsonSerializerOptions SerializerOptions = new()
     {
@@ -75,19 +75,21 @@ public sealed class TaskFlowJsonConsoleFormatter : ConsoleFormatter, IDisposable
         var payload = new Dictionary<string, object?>(StringComparer.Ordinal)
         {
             ["schema_version"] = SchemaVersion,
-            ["@timestamp"] = DateTimeOffset.UtcNow,
-            ["log_level"] = logEntry.LogLevel.ToString(),
+            // These fields intentionally use the VictoriaLogs-friendly names
+            // documented in the Kubernetes logging homework.
+            ["timestamp"] = DateTimeOffset.UtcNow,
+            ["level"] = logEntry.LogLevel.ToString(),
             ["event_id"] = logEntry.EventId.Id,
             ["event_name"] = string.IsNullOrWhiteSpace(logEntry.EventId.Name)
                 ? $"Event{logEntry.EventId.Id}"
                 : logEntry.EventId.Name,
             ["message"] = message,
-            ["service_name"] = _options.ServiceName,
-            ["service_version"] = _options.ServiceVersion,
-            ["deployment_environment"] = _options.DeploymentEnvironment,
-            ["instance_id"] = _options.InstanceId,
-            ["trace_id"] = activity?.TraceId.ToString(),
-            ["span_id"] = activity?.SpanId.ToString(),
+            ["service.name"] = _options.ServiceName,
+            ["service.version"] = _options.ServiceVersion,
+            ["deployment.environment"] = _options.DeploymentEnvironment,
+            ["service.instance.id"] = _options.InstanceId,
+            ["trace.id"] = activity?.TraceId.ToString(),
+            ["span.id"] = activity?.SpanId.ToString(),
             ["request_id"] = structured.GetValueOrDefault("request_id"),
         };
 

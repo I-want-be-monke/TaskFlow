@@ -17,10 +17,15 @@ Push-Location $ManifestRoot
 try {
     kubectl delete job taskflow-migrator --namespace taskflow --ignore-not-found
     kubectl apply -k .
+    kubectl rollout restart daemonset/taskflow-vector --namespace taskflow
     kubectl wait --namespace taskflow --for=condition=ready pod -l app.kubernetes.io/name=taskflow-postgres --timeout=180s
     kubectl wait --namespace taskflow --for=condition=complete job/taskflow-migrator --timeout=180s
     kubectl rollout status --namespace taskflow deployment/taskflow-api --timeout=180s
     kubectl rollout status --namespace taskflow deployment/taskflow-frontend --timeout=180s
+    kubectl rollout status --namespace taskflow deployment/victoria-logs --timeout=180s
+    kubectl rollout status --namespace taskflow daemonset/taskflow-vector --timeout=180s
+    kubectl rollout status --namespace taskflow deployment/taskflow-alertmanager --timeout=180s
+    kubectl rollout status --namespace taskflow deployment/taskflow-vmalert --timeout=180s
     kubectl get all,pvc --namespace taskflow
     Write-Host 'В отдельном PowerShell окне выполните:'
     Write-Host "  & '$Minikube' -p $MinikubeProfile service taskflow-frontend --namespace taskflow --url"
