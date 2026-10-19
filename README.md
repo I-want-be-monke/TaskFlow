@@ -268,3 +268,5 @@ Client          -> Blazor/BCL + Contracts
 ## Документация
 
 - `PROJECT_REPORT.md` — итоговый отчёт по архитектуре, реализации и проверкам проекта.
+- `kubernetes/README.md` — короткий кроссплатформенный запуск и проверка ДЗ 2 в minikube.
+- `kubernetes/Отчёт.md` — состав Kubernetes-решения и обоснование StatefulSet для PostgreSQL.

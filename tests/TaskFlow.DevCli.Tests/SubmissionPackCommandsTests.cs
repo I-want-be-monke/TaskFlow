@@ -12,6 +12,10 @@ public sealed class SubmissionPackCommandsTests
     [InlineData(".env.compose.example", true)]
     [InlineData("TestResults/results.trx", false)]
     [InlineData("node_modules/package/index.js", false)]
+    [InlineData(".nuget-packages/package.nupkg", false)]
+    [InlineData(".local-nuget/package.nupkg", false)]
+    [InlineData(".gh-cache/checkpoint.json", false)]
+    [InlineData(".gh-config/hosts.yml", false)]
     [InlineData(".DS_Store", false)]
     [InlineData("Thumbs.db", false)]
     public void ShouldInclude_FiltersBuildOutputAndSecrets(string relativePath, bool expected)

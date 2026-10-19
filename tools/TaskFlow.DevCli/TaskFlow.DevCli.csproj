@@ -4,6 +4,9 @@
     <TargetFramework>net10.0</TargetFramework>
     <RootNamespace>TaskFlow.DevCli</RootNamespace>
     <AssemblyName>TaskFlow.DevCli</AssemblyName>
+    <!-- The CLI builds TaskFlow.sln as part of `ci quality`. Avoid locking an
+         apphost executable while that same solution is rebuilt. -->
+    <UseAppHost>false</UseAppHost>
   </PropertyGroup>
 
   <ItemGroup>

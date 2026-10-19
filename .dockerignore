@@ -13,9 +13,14 @@ coverage
 TestResults
 artifacts
 .local
+.gh-cache
+.gh-config
+.local-nuget
+.nuget-packages
 *.zip
 *.sha256
 
 # Host-side development / verification material is not required in runtime image builds.
 tools/
 tests/
+kubernetes/
