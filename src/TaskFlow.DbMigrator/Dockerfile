@@ -18,7 +18,7 @@ RUN dotnet publish src/TaskFlow.DbMigrator/TaskFlow.DbMigrator.csproj \
     --output /out \
     /p:UseAppHost=false
 
-FROM mcr.microsoft.com/dotnet/aspnet:10.0.12 AS runtime
+FROM mcr.microsoft.com/dotnet/aspnet:10.0.13 AS runtime
 WORKDIR /app
 COPY --from=build --chown=app:app /out/ ./
 ENV DOTNET_EnableDiagnostics=0

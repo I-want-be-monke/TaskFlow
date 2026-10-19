@@ -20,7 +20,7 @@ RUN dotnet publish src/TaskFlow.Api/TaskFlow.Api.csproj \
     --output /out \
     /p:UseAppHost=false
 
-FROM mcr.microsoft.com/dotnet/aspnet:10.0.12 AS runtime
+FROM mcr.microsoft.com/dotnet/aspnet:10.0.13 AS runtime
 USER root
 RUN apt-get update \
     && apt-get install --yes --no-install-recommends ca-certificates curl \
