@@ -258,15 +258,17 @@ Client          -> Blazor/BCL + Contracts
 
 ## Что осталось shell-based
 
-Пользовательских launcher/verification shell scripts нет. Shell используется только как нативный внутренний механизм Linux-контейнеров:
+Запуск Docker Compose и его проверки выполняет `TaskFlow.DevCli`. Для отдельного учебного развёртывания в minikube есть скрипты в `kubernetes/scripts/` для Windows и Linux/macOS. Внутри Linux-контейнеров shell также используется для двух задач:
 
 - NGINX container entrypoint генерирует локальный self-signed TLS certificate;
 - официальный PostgreSQL image вызывает init hook для создания least-privilege DB roles.
 
-Это не требует Bash/Git Bash/PowerShell от пользователя и не участвует в запуске команд с хоста.
+Для Docker Compose эти внутренние команды не требуют Bash/Git Bash/PowerShell на хосте.
 
 ## Документация
 
 - `PROJECT_REPORT.md` — итоговый отчёт по архитектуре, реализации и проверкам проекта.
 - `kubernetes/README.md` — короткий кроссплатформенный запуск и проверка ДЗ 2 в minikube.
 - `kubernetes/Отчёт.md` — состав Kubernetes-решения и обоснование StatefulSet для PostgreSQL.
+- [`kubernetes/ДЗ3/Отчёт.md`](kubernetes/ДЗ3/Отчёт.md) — отчёт по Victoria Logs с четырьмя скриншотами VMUI и снимком срабатывания vmalert.
+- [`kubernetes/victoria-logs.yaml`](kubernetes/victoria-logs.yaml), [`kubernetes/vector.yaml`](kubernetes/vector.yaml), [`kubernetes/vmalert.yaml`](kubernetes/vmalert.yaml) — манифесты ДЗ 3; все подключены в [`kubernetes/kustomization.yaml`](kubernetes/kustomization.yaml).
